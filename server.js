@@ -1,6 +1,6 @@
 const express = require("express");
 const dotenv = require("dotenv");
-const passport = require("passport");
+// const passport = require("passport");
 const cors = require("cors");
 const venueController = require("./controllers/venueController");
 const decorationController = require("./controllers/decorationController");
@@ -9,13 +9,13 @@ const contactController = require("./controllers/contactController");
 const authController = require("./controllers/authController");
 const connectDB = require('./config/db');
 
-require('./config/passport');
+// require('./config/passport');
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-app.use(passport.initialize());
+// app.use(passport.initialize());
 
 
 connectDB();

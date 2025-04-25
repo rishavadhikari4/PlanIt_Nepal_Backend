@@ -77,6 +77,40 @@ router.post('/login',async(req,res)=>{
 });
 
 
+router.post('/adminLogin', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        // Special admin login
+        if (email === 'admin@admin.com' && password === 'admin') {
+            const token = jwt.sign(
+                { email: 'admin@admin.com' },
+                process.env.JWT_SECRET || 'your_secret_key',
+                { expiresIn: '2h' }
+            );
+
+            return res.json({ token });
+        }
+
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
+        // If not admin, respond with invalid credentials
+        return res.status(400).json({ message: 'Invalid credentials' });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+router.get('/verify', authMiddleware, (req, res) => {
+    res.json({ valid: true, user: req.user });
+});
+
+
+
+
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get("/google/callback", passport.authenticate("google", { session: false }), (req, res) => {
