@@ -2,13 +2,15 @@ const express = require("express");
 const dotenv = require("dotenv");
 // const passport = require("passport");
 const cors = require("cors");
+
 const venueController = require("./controllers/venueController");
 const decorationController = require("./controllers/decorationController");
 const dishController = require("./controllers/dishController");
 const contactController = require("./controllers/contactController");
 const authController = require("./controllers/authController");
-const connectDB = require('./config/db');
+const cartController = require("./controllers/cartController");
 
+const connectDB = require('./config/db');
 // require('./config/passport');
 dotenv.config();
 
@@ -25,6 +27,7 @@ app.use('/api/decorations',decorationController);
 app.use('/api/dishes',dishController);
 app.use('/api/contacts',contactController);
 app.use('/api/auth',authController);
+app.use('/api/cart',cartController);
 
 
 const PORT = process.env.PORT || 5000;
