@@ -9,6 +9,7 @@ const dishController = require("./controllers/dishController");
 const contactController = require("./controllers/contactController");
 const authController = require("./controllers/authController");
 const cartController = require("./controllers/cartController");
+const orderController = require("./controllers/orderController");
 
 const connectDB = require('./config/db');
 // require('./config/passport');
@@ -28,6 +29,7 @@ app.use('/api/dishes',dishController);
 app.use('/api/contacts',contactController);
 app.use('/api/auth',authController);
 app.use('/api/cart',cartController);
+app.use('/api/orders',orderController);
 
 
 const PORT = process.env.PORT || 5000;
