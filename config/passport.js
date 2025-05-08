@@ -8,7 +8,7 @@ passport.use(
         {
             clientID: process.env.CLIENT_ID,
             clientSecret: process.env.CLIENT_SECRET,
-            callbackURL: process.env.CALLBACK_URL,
+            callbackURL: process.env.CALLBACK_URI,
         },
         async(accessToken, refereshToken, profile, done)=>{
             const email = profile.emails[0].value;
