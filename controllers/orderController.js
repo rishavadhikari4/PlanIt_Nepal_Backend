@@ -2,7 +2,7 @@ const express =  require('express');
 const Cart = require('../models/cart');
 const Order = require('../models/order');
 
-const authMiddleware = require('../middleware/middleware');
+const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.post('/', authMiddleware, async (req, res) => {

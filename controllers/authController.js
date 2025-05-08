@@ -2,16 +2,34 @@ const express = require("express");
 const passport = require("passport");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require('express-rate-limit');
+
+
 require("dotenv").config();
 
-
 const User = require("../models/User");
-const authMiddleware = require("../middleware/middleware");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 5,
+  message: 'Too many login attempts, try again later'
+});
 
-router.post('/register',async(req , res)=>{
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many registration attempts, try again later'
+});
+
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret) {
+  throw new Error("JWT_SECRET is not defined in environment variables");
+}
+
+router.post('/register',registerLimiter,async(req , res)=>{
     const {name, email, password, confirmPassword} = req.body;
     if(password !== confirmPassword){
         return res.status(400).json({message:"Passwords do not match"});
@@ -33,7 +51,7 @@ router.post('/register',async(req , res)=>{
             id:newUser._id,
             name:newUser.name,
             email:newUser.email
-        },process.env.JWT_SECRET || "your_secret_key",
+        },jwtSecret,
         {expiresIn:"2h"}
     );
     res.json({token});
@@ -43,7 +61,7 @@ router.post('/register',async(req , res)=>{
     }
 });
 
-router.post('/login',async(req,res)=>{
+router.post('/login',loginLimiter,async(req,res)=>{
      const { email, password } = req.body;
     try {
         if (!email || !password) {
@@ -65,7 +83,7 @@ router.post('/login',async(req,res)=>{
               email: user.email,
               name: user.name
             },
-            process.env.JWT_SECRET || 'your_secret_key',
+            jwtSecret,
             { expiresIn: '2h' }
         );
 
@@ -77,14 +95,15 @@ router.post('/login',async(req,res)=>{
 });
 
 
-router.post('/adminLogin', async (req, res) => {
+router.post('/adminLogin',loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     try {
-        // Special admin login
-        if (email === 'admin@admin.com' && password === 'admin') {
+
+        const isAdminPasswordValid = await bcrypt.compare(password, process.env.ADMIN_PASSWORD);
+        if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
             const token = jwt.sign(
-                { email: 'admin@admin.com' },
-                process.env.JWT_SECRET || 'your_secret_key',
+                { email: process.env.ADMIN_EMAIL },
+                jwtSecret,
                 { expiresIn: '2h' }
             );
 
@@ -95,7 +114,7 @@ router.post('/adminLogin', async (req, res) => {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
-        // If not admin, respond with invalid credentials
+
         return res.status(400).json({ message: 'Invalid credentials' });
 
     } catch (error) {
@@ -105,7 +124,11 @@ router.post('/adminLogin', async (req, res) => {
 });
 
 router.get('/verify', authMiddleware, (req, res) => {
-    res.json({ valid: true, user: req.user });
+    if (req.user.email === process.env.ADMIN_EMAIL) {
+        res.json({ valid: true, user: req.user });
+    } else {
+        res.json({ valid: false, user: req.user });
+    }
 });
 
 
@@ -119,13 +142,12 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
 
   const token = jwt.sign(
     { id: user._id, name: user.name, email: user.email },
-    process.env.JWT_SECRET || "your_secret_key",
+    jwtSecret,
     { expiresIn: "2h" }
   );
 
-  res.redirect(`http://localhost:8080/auth-success?token=${token}`);
+  res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?token=${token}`);
 });
-
 
 
 
@@ -171,7 +193,7 @@ router.patch('/profile', authMiddleware, async (req, res) => {
     }
 });
 
-router.get('allUsers', authMiddleware, async (req, res) => {
+router.get('/allUsers', authMiddleware, async (req, res) => {
     try {
         const users = await User.find().select('-password');
         res.json(users);
