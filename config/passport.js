@@ -8,7 +8,7 @@ passport.use(
         {
             clientID: process.env.CLIENT_ID,
             clientSecret: process.env.CLIENT_SECRET,
-            callbackURL: 'https://wedding-planner-backend-drr8.onrender.com/api/auth/google/callback',
+            callbackURL: process.env.CALLBACK_URL,
         },
         async(accessToken, refereshToken, profile, done)=>{
             const email = profile.emails[0].value;
