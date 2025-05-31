@@ -31,9 +31,9 @@ router.post('/',authMiddleware,async(req , res)=>{
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const cartItems = await Cart.find({ userId: req.user.id });
+
     return res.status(200).json(cartItems);
   } catch (err) {
-    console.error("Error fetching cart items:", err);
     return res.status(500).json({ message: "Internal server error" });
   }
 });
