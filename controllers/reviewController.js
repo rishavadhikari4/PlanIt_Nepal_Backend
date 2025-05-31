@@ -32,4 +32,18 @@ router.post('/',authMiddleware,async(req,res)=>{
     }
 });
 
+router.get('/', async (req, res) => {
+  try {
+    const reviews = await Review.find()
+      .sort({ createdAt: -1 })  
+      .limit(5);                
+    res.json(reviews);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
 module.exports = router;
