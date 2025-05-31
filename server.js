@@ -10,6 +10,7 @@ const contactController = require("./controllers/contactController");
 const authController = require("./controllers/authController");
 const cartController = require("./controllers/cartController");
 const orderController = require("./controllers/orderController");
+const passwordController = require("./controllers/passwordController");
 
 const connectDB = require('./config/db');
 require('./config/passport');
@@ -30,6 +31,7 @@ app.use('/api/contacts',contactController);
 app.use('/api/auth',authController);
 app.use('/api/cart',cartController);
 app.use('/api/orders',orderController);
+app.use('/api/password',passwordController);
 
 
 const PORT = process.env.PORT || 5000;
