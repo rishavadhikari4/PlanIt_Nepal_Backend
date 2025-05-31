@@ -11,6 +11,7 @@ const authController = require("./controllers/authController");
 const cartController = require("./controllers/cartController");
 const orderController = require("./controllers/orderController");
 const passwordController = require("./controllers/passwordController");
+const reviewController = require("./controllers/reviewController");
 
 const connectDB = require('./config/db');
 require('./config/passport');
@@ -32,6 +33,7 @@ app.use('/api/auth',authController);
 app.use('/api/cart',cartController);
 app.use('/api/orders',orderController);
 app.use('/api/password',passwordController);
+app.use('/api/review',reviewController);
 
 
 const PORT = process.env.PORT || 5000;
