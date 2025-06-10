@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
     },
     profieImage:{
         type:String,
+        default: "https://res.cloudinary.com/de1lvlqme/image/upload/v1749566197/vecteezy_default-profile-account-unknown-icon-black-silhouette_20765399_ldtak0.jpg"
     },
     resetPasswordToken:{
         type:String,
@@ -24,17 +25,7 @@ const userSchema = new mongoose.Schema({
         type:Date,
         default:null
     }
-}, { 
-    timestamps: true 
-});
-
-// Middleware to handle profieImage default logic
-userSchema.pre('save', function(next) {
-    if (!this.profieImage || this.profieImage.trim() === '') {
-        this.profieImage = "https://res.cloudinary.com/de1lvlqme/image/upload/v1749566197/vecteezy_default-profile-account-unknown-icon-black-silhouette_20765399_ldtak0.jpg";
-    }
-    next();
-});
+}, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
 

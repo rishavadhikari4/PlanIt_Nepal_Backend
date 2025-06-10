@@ -13,7 +13,7 @@ passport.use(
         async(accessToken, refereshToken, profile, done)=>{
             const email = profile.emails[0].value;
             const name = profile.displayName;
-            const image = profile.photos[0].value;
+            const profieImage = profile.photos[0].value;
             try{
                 let user = await User.findOne({email});
                 if(!user){
@@ -21,7 +21,7 @@ passport.use(
                         name,
                         email,
                         password:"",
-                        image,
+                        profileImage,
                     });
                 }
                 return done(null,user);
