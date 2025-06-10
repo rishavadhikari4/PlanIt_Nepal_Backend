@@ -13,13 +13,15 @@ passport.use(
         async(accessToken, refereshToken, profile, done)=>{
             const email = profile.emails[0].value;
             const name = profile.displayName;
+            const image = profile.photos[0].value;
             try{
                 let user = await User.findOne({email});
                 if(!user){
                     user = await User.create({
                         name,
                         email,
-                        password:""
+                        password:"",
+                        image,
                     });
                 }
                 return done(null,user);

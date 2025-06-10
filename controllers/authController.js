@@ -29,6 +29,7 @@ if (!jwtSecret) {
   throw new Error("JWT_SECRET is not defined in environment variables");
 }
 
+//this is the route to register new user
 router.post('/register',registerLimiter,async(req , res)=>{
     const {name, email, password, confirmPassword} = req.body;
     if(password !== confirmPassword){
@@ -61,6 +62,7 @@ router.post('/register',registerLimiter,async(req , res)=>{
     }
 });
 
+//this is the route for the normal user login
 router.post('/login',loginLimiter,async(req,res)=>{
      const { email, password } = req.body;
     try {
@@ -94,7 +96,7 @@ router.post('/login',loginLimiter,async(req,res)=>{
     }
 });
 
-
+//this is the route to login the admin
 router.post('/adminLogin',loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -123,6 +125,7 @@ router.post('/adminLogin',loginLimiter, async (req, res) => {
     }
 });
 
+//this is to verfiy the user is verifed or not
 router.get('/verify', authMiddleware, (req, res) => {
     if (req.user.email === process.env.ADMIN_EMAIL) {
         res.json({ valid: true, user: req.user });
@@ -133,7 +136,7 @@ router.get('/verify', authMiddleware, (req, res) => {
 
 
 
-
+//this is the route for the Oauth2 verification
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
 router.get("/google/callback", passport.authenticate("google", { session: false }), (req, res) => {
@@ -150,7 +153,7 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
 });
 
 
-
+//this is the route to get the particular user profile
 router.get(`/profile`,authMiddleware,async(req,res)=>{
     try{
         const user = await User.findById(req.user.id).select(`-password`);
@@ -166,6 +169,7 @@ router.get(`/profile`,authMiddleware,async(req,res)=>{
     }
 });
 
+//this is the route to edit the user profile
 router.patch('/profile', authMiddleware, async (req, res) => {
     try {
         const { name, email } = req.body;
@@ -193,6 +197,7 @@ router.patch('/profile', authMiddleware, async (req, res) => {
     }
 });
 
+//this is the route to get all the user detail
 router.get('/allUsers', authMiddleware, async (req, res) => {
     try {
         const users = await User.find().select('-password');
@@ -200,6 +205,21 @@ router.get('/allUsers', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+//this is the route to remove the user from the database
+router.delete('/:id',authMiddleware,async(req,res)=>{
+    try{
+        const userId = req.params.id;
+        const deletedUserId = User.findByIdAndDelete(userId);
+    if(!deletedUserId){
+        return res.status(404).json({message:"User Not found"});
+    }
+    return res.status(200).json({message:"User deleted succesfully"});
+    }catch(err){
+        console.error("Error deleting the User:",err);
+        return res.status(500).json({message:"Internal Server Error"});
     }
 });
 

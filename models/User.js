@@ -13,6 +13,9 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
     },
+    image:{
+        type:String,
+    },
     resetPasswordToken:{
         type:String,
         default:null

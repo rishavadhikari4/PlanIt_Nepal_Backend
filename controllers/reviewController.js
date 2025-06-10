@@ -35,12 +35,25 @@ router.post('/',authMiddleware,async(req,res)=>{
 router.get('/', async (req, res) => {
   try {
     const reviews = await Review.find()
-      .sort({ createdAt: -1 })  
+      .sort({ createdAt: -1 })
       .limit(5);                
     res.json(reviews);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.delete('/:id',async (req,res)=>{
+  try{
+    const deletedReview = await Review.findByIdAndDelete();
+    if(!deletedReview){
+      return res.status(404).json({message:"Reivew Not Found"});
+    }
+    res.status(200).json({message:"Review Deleted Successfully"});
+  }catch(err){
+    console.error(err);
+    res.status(500).json({message:"Internal Server Error"});
   }
 });
 
