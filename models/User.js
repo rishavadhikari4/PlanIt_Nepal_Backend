@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
     },
     image:{
         type:String,
+        default: "https://res.cloudinary.com/de1lvlqme/image/upload/v1749566197/vecteezy_default-profile-account-unknown-icon-black-silhouette_20765399_ldtak0.jpg"
     },
     resetPasswordToken:{
         type:String,
