@@ -32,7 +32,7 @@ router.post('/',authMiddleware,async(req,res)=>{
     }
 });
 
-router.get('/', async (req, res) => {
+router.get('/all-reviews', async (req, res) => {
   try {
     const reviews = await Review.find()
       .sort({ createdAt: -1 })
@@ -43,6 +43,32 @@ router.get('/', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+router.get('/verified-reviews', async (req, res) => {
+  try {
+    const reviews = await Review.find({ verified: true })  // only verified reviews
+      .sort({ createdAt: -1 })
+      .limit(5);
+    res.json(reviews);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/unverified-reviews', async (req, res) => {
+  try {
+    const reviews = await Review.find({ verified: false })  // only verified reviews
+      .sort({ createdAt: -1 })
+      .limit(5);
+    res.json(reviews);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 
 router.delete('/:id',async (req,res)=>{
   try{
@@ -56,6 +82,28 @@ router.delete('/:id',async (req,res)=>{
     res.status(500).json({message:"Internal Server Error"});
   }
 });
+
+router.patch('/toggle-verified/:id',async(req,res)=>{
+  const reviewId = req.params.id;
+  try{
+    const review = await Review.findById(reviewId);
+    if(!review){
+      return res.status(404).json({message:"Review not found"});
+    }
+    review.verified = !review.verified;
+
+    await review.save();
+    res.status(200).json({
+      message:`Review verified status updated to ${review.verified}`,
+      verified:review.verified
+    });
+  }catch(err){
+    console.error(err);
+    res.status(500).json({message: 'Server error'});
+
+  }
+});
+
 
 
 
