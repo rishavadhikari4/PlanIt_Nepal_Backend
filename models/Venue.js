@@ -15,7 +15,11 @@ const venueSchema = new mongoose.Schema({
   image: {
     type: String,
     required: true,
-  },},{timestamps: true});
+  },
+  imageID:{
+    type: String
+  }
+},{timestamps: true});
 
   const Venue = mongoose.model("Venue", venueSchema);
     

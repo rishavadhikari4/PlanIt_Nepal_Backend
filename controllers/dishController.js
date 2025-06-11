@@ -1,31 +1,46 @@
 const express = require('express');
 const dishCategory = require('../models/Dishes');
+const upload = require('../middleware/multer');
+const uploadToCloudinary = require('../config/cloudinaryConfig');
 
 const router = express.Router();
 
-//this is the api to add dishes to a particular category
-router.post('/', async (req, res) => {
-  try {
-    const { category, dishes } = req.body;
 
-    if (!category || !dishes || !Array.isArray(dishes)) {
-      return res.status(400).json({ message: "Please provide category and dishes (as an array)" });
+//this is the api to add dishes to a particular category
+
+router.post('/upload-dish', upload.single('image'), async (req, res) => {
+  try {
+    const { category, name, description } = req.body;
+
+    if (!category || !name || !req.file) {
+      return res.status(400).json({ message: 'Please provide category, dish name, and image' });
     }
 
-    const updatedCategory = await dishCategory.findOneAndUpdate(
+    // Upload image to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer);
+
+    const newDish = {
+      name,
+      description,
+      image: result.secure_url,
+      imageId: result.public_id
+    };
+
+    const updatedCategory = await Category.findOneAndUpdate(
       { category },
-      { $push: { dishes: { $each: dishes } } },
+      { $push: { dishes: newDish } },
       { new: true, upsert: true }
     );
 
-    res.status(200).json({
-      message: "Dishes added/updated successfully",
+    return res.status(200).json({
+      message: 'Dish added successfully with image',
+      dish: newDish,
       updatedCategory
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Internal server error" });
+    console.error('Error uploading dish:', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
 

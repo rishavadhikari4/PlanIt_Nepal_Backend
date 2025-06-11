@@ -2,20 +2,26 @@ const express = require('express');
 const Venue = require('../models/Venue');
 const authMiddleware = require('../middleware/authMiddleware');
 
-const router = express.Router();    
+const upload = require('../middleware/multer');
+const {uploadToCloudinary} = require('../config/cloudinaryConfig');
+
+const router = express.Router();
 
 // Create a new venue
-router.post('/', async (req, res) =>{
+router.post('/', upload.single('image'),async (req, res) =>{
     try{
-        const{name,location,description,image} = req.body;
-        if(!name || !location || !description || !image){
+        const{name,location,description} = req.body;
+        if(!name || !location || !description || !req.file){
             return res.status(400).json({message: 'Please fill all fields'});
         }
+        const result = await uploadToCloudinary(req.file.buffer);
         const newVenue = new Venue({
             name,
             location,
             description,
-            image
+            image : result.secure_url,
+            imageID: result.public_id
+
         });
         await newVenue.save();
         return res.status(201).json({message: 'Venue created successfully', venue: newVenue});

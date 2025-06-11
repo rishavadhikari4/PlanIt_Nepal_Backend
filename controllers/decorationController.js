@@ -1,21 +1,25 @@
 const express = require('express');
 const Decoration = require('../models/Decoration');
 const authMiddleware = require('../middleware/authMiddleware');
+const {uploadToCloudinary} = require('../config/cloudinaryConfig');
+const upload = require('../middleware/multer');
 
 const router = express.Router();
 
 //this is to post into the API
 
-router.post('/',async (req,res)=>{
+router.post('/',upload.single('image'),async (req,res)=>{
     try{
-        const{name,description,image} = req.body;
-        if(!name || !description ||!image){
+        const{name,description} = req.body;
+        if(!name || !description || !req.file){
             return res.status(400).json({message:"please Fill all fields"});
         }
+        const result = await uploadToCloudinary(req.file.buffer);
         const newDecoration = new Decoration({
             name,
             description,
-            image
+            image:result.secure_url,
+            imageId : result.public_id
         });
         await newDecoration.save();
         return res.status(201).json({message:"Decorations Created Successfully", decoration:newDecoration});

@@ -10,6 +10,9 @@ const dishSchema = new mongoose.Schema({
     },
     image:{
         type:String,
+    },
+    imageId:{
+        type:String,
     }
 });
 

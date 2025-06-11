@@ -13,8 +13,8 @@ const orderController = require("./controllers/orderController");
 const passwordController = require("./controllers/passwordController");
 const reviewController = require("./controllers/reviewController");
 
-const connectDB = require('./config/db');
-require('./config/passport');
+const connectDB = require('./config/dbConfig');
+require('./config/passportConfig');
 dotenv.config();
 
 const app = express();
