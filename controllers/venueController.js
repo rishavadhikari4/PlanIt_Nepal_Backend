@@ -3,7 +3,7 @@ const Venue = require('../models/Venue');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const upload = require('../middleware/multer');
-const {uploadToCloudinary} = require('../config/cloudinaryConfig');
+const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
 
 const router = express.Router();
 
@@ -20,7 +20,7 @@ router.post('/', upload.single('image'),async (req, res) =>{
             location,
             description,
             image : result.secure_url,
-            imageID: result.public_id
+            imageId: result.public_id
 
         });
         await newVenue.save();
@@ -54,17 +54,39 @@ router.get('/:id', async (req, res) => {
     }
 });
 // Update a venue by ID
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', upload.single('image'),async (req, res) => {
+    const { name, location, description} = req.body;
     try {
-        const { name, location, description, image } = req.body;
+        const venue = await Venue.findById(req.params.id);
+        if(!venue){
+            return res.status(404).json({message:"Venue not found"});
+        }
+        if(venue.imageId){
+            await deleteFromCloudinary(venue.imageId);
+        }
+        let imageUrl = venue.image;
+        let imageId = venue.imageId;
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer);
+            imageUrl = result.secure_url;
+            imageId = result.public_id;
+        }
+        
         const updatedVenue = await Venue.findByIdAndUpdate(
             req.params.id,
-            { $set: { name, location, description, image } },
+            { 
+                $set: { 
+                    name,
+                    location,
+                    description,
+                    image:imageUrl,
+                    imageId:imageId 
+                } 
+            },
             { new: true }
         );
-        if (!updatedVenue) {
-            return res.status(404).json({ message: 'Venue not found' });
-        }
+        
         return res.status(200).json({ message: 'Venue updated successfully', venue: updatedVenue });
     } catch (err) {
         console.error('Error updating venue:', err);
@@ -74,10 +96,18 @@ router.patch('/:id', async (req, res) => {
 // Delete a venue by ID
 router.delete('/:id', async (req, res) => {
     try {
-        const deletedVenue = await Venue.findByIdAndDelete(req.params.id);
-        if (!deletedVenue) {
-            return res.status(404).json({ message: 'Venue not found' });
+        const venue =  await Venue.findById(req.params.id);
+
+        if(!venue){
+            return res.status(404).json({message:"Venue not found"});
         }
+
+        if(venue.imageId){
+            await deleteFromCloudinary(venue.imageId);
+        }
+
+        await Venue.findByIdAndDelete(req.params.id);
+
         return res.status(200).json({ message: 'Venue deleted successfully' });
     } catch (err) {
         console.error('Error deleting venue:', err);

@@ -7,6 +7,8 @@ const rateLimit = require('express-rate-limit');
 
 require("dotenv").config();
 
+const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
+const upload = require('../middleware/multer');
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
 
@@ -45,7 +47,11 @@ router.post('/register',registerLimiter,async(req , res)=>{
         }
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-        const newUser = new User({name,email,password:hashedPassword});
+        const newUser = new User({
+            name,
+            email,
+            password:hashedPassword
+        });
         await newUser.save();
 
         const token = jwt.sign({
@@ -170,7 +176,7 @@ router.get(`/profile`,authMiddleware,async(req,res)=>{
 });
 
 //this is the route to edit the user profile
-router.patch('/profile', authMiddleware, async (req, res) => {
+router.patch('/update-profile', authMiddleware, async (req, res) => {
     try {
         const { name, email } = req.body;
         const user = await User.findById(req.user.id);
@@ -220,6 +226,37 @@ router.delete('/:id',authMiddleware,async(req,res)=>{
     }catch(err){
         console.error("Error deleting the User:",err);
         return res.status(500).json({message:"Internal Server Error"});
+    }
+});
+
+
+router.patch('/update-profile-pic', upload.single('image'), authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: "User Not found" });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ message: "Please upload an image" });
+        }
+
+        if (user.profileImageId) {
+            await deleteFromCloudinary(user.profileImageId); 
+        }
+
+        const result = await uploadToCloudinary(req.file.buffer);
+
+        user.profileImage = result.secure_url;
+        user.profileImageId = result.public_id;
+
+        await user.save();
+
+        res.status(200).json({ message: "Updated profile picture successfully", image: result.secure_url });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Internal server error" });
     }
 });
 

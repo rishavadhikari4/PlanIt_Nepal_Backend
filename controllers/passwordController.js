@@ -99,7 +99,7 @@ router.post('/forgotpassword', forgotPasswordLimiter, async (req, res) => {
         const resetLink = `http://localhost:3000/resetpassword/${resetToken}`;
 
         const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-user.resetPasswordToken = hashedToken;
+        user.resetPasswordToken = hashedToken;
 
         user.resetPasswordExpire = Date.now() + 3600000;
         //this expires in the one hour

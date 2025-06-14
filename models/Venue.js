@@ -16,7 +16,7 @@ const venueSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  imageID:{
+  imageId:{
     type: String
   }
 },{timestamps: true});

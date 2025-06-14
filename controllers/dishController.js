@@ -26,7 +26,7 @@ router.post('/upload-dish', upload.single('image'), async (req, res) => {
       imageId: result.public_id
     };
 
-    const updatedCategory = await Category.findOneAndUpdate(
+    const updatedCategory = await dishCategory.findOneAndUpdate(
       { category },
       { $push: { dishes: newDish } },
       { new: true, upsert: true }
@@ -82,61 +82,93 @@ router.get('/',async(req,res)=>{
 );
 
 
-router.patch('/category/:categoryId/dish/:dishId',async(req,res)=>{
-    try{
-        const {categoryId,dishId} = req.params;
-        const {name,description,image} = req.body;
-        if(!name || !description || !image){
-            return res.status(400).json({message:"Please provide name, description and image"});
+
+router.patch('/category/:categoryId/dish/:dishId', upload.single('image'), async (req, res) => {
+    try {
+        const { categoryId, dishId } = req.params;
+        const { name, description } = req.body;
+
+
+        const category = await dishCategory.findById(categoryId);
+        if (!category) {
+            return res.status(404).json({ message: "Category not found" });
         }
-        const updateFields = {};
-        if(name) updateFields['dishes.$.name'] = name;
-        if(description) updateFields['dishes.$.description'] = description;
-        if(image) updateFields['dishes.$.image'] = image;
 
-
-        const updatedCategory = await dishCategory.findOneAndUpdate(
-            {_id:categoryId,"dishes._id":dishId},
-            {$set:updateFields},
-            {new:true}
-        );
-
-        if(!updatedCategory){
-            return res.status(404).json({message:"Category or dish not found"});
+        const dish = category.dishes.id(dishId);
+        if (!dish) {
+            return res.status(404).json({ message: "Dish not found" });
         }
+
+
+        if (req.file && dish.imageId) {
+            await deleteFromCloudinary(dish.imageId);
+        }
+
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer);
+            dish.image = result.secure_url;
+            dish.imageId = result.public_id;
+        }
+
+
+        if (name) dish.name = name;
+        if (description) dish.description = description;
+
+        await category.save();
+
         res.status(200).json({
-            message:"Dish updated successfully",
-            updatedCategory
+            message: "Dish updated successfully",
+            updatedDish: dish,
         });
 
-    }catch(err){
-        console.error(err);
-        res.status(500).json({message:"Internal server error"});
+    } catch (err) {
+        console.error("Error updating dish:", err);
+        res.status(500).json({ message: "Internal server error" });
     }
 });
 
 //this api to delete a dish from a category
-router.delete('/category/:categoryId/dish/:dishId',async(req,res)=>{
-    try{
-        const{categoryId,dishId} = req.params;
 
-        const deletedCategory = await dishCategory.findByIdAndUpdate(
-      categoryId,
-      { $pull: { dishes: { _id: dishId } } },
-      { new: true }
-    );
-        if(!deletedCategory){
-            return res.status(404).json({message:"Category or dish not found"});
-        }
-        res.status(200).json({
-            message:"Dish deleted successfully",
-            deletedCategory
-        });
-    }catch(err){
-        console.error(err);
-        res.status(500).json({message:"Internal server error"});
+
+router.delete('/category/:categoryId/dish/:dishId', async (req, res) => {
+  try {
+    const { categoryId, dishId } = req.params;
+
+
+    const category = await dishCategory.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
     }
+
+
+    const dish = category.dishes.id(dishId);
+    if (!dish) {
+      return res.status(404).json({ message: "Dish not found" });
+    }
+
+    if (dish.imageId) {
+      await deleteFromCloudinary(dish.imageId);
+    }
+
+
+    dish.deleteOne();
+
+
+    await category.save();
+
+    res.status(200).json({
+      message: "Dish deleted successfully",
+      updatedCategory: category,
+    });
+  } catch (err) {
+    console.error("Error deleting dish:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
 });
+
+
+
 
 
 

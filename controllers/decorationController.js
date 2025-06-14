@@ -1,7 +1,8 @@
 const express = require('express');
 const Decoration = require('../models/Decoration');
 const authMiddleware = require('../middleware/authMiddleware');
-const {uploadToCloudinary} = require('../config/cloudinaryConfig');
+
+const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
 const upload = require('../middleware/multer');
 
 const router = express.Router();
@@ -41,7 +42,7 @@ router.get('/',async(req,res)=>{
         return res.status(500).json({message:"internal server error"});
     }
 });
-
+//get a particular decoration
 router.get('/:id',async(req,res)=>{
     try{
         const decoration = await Decoration.findById(req.params.id);
@@ -56,38 +57,80 @@ router.get('/:id',async(req,res)=>{
     }
 });
 
-router.patch('/:id', async(req,res)=>{
-    try{
-        const {name,description,image} = req.body;
-        const updatedDecoration = await Decoration.findByIdAndUpdate(req.params.id,{
-            $set:{
-                name,
-                description,
-                image
-            }
-        },{new:true});
-        if(!updatedDecoration){
-            return res.status(404).json({message: "Decoration not found"});
-        }
-        return res.status(200).json({message:"Decoration updated successfully",decoration:updatedDecoration});
-    }catch(err){
-        console.error("Error updating decoration:",err);
-        return res.status(500).json({message:"Internal Server Error"});
-    }
+router.patch('/:id', upload.single('image'), async (req, res) => {
+    const { name, description } = req.body;
 
+    try {
+
+        const decoration = await Decoration.findById(req.params.id);
+
+        if (!decoration) {
+            return res.status(404).json({ message: "Decoration not found" });
+        }
+
+
+        if (decoration.imageId) {
+            await deleteFromCloudinary(decoration.imageId);
+        }
+
+
+        let imageUrl = decoration.image;
+        let imageId = decoration.imageId;
+
+        if (req.file) {
+            const result = await uploadToCloudinary(req.file.buffer);
+            imageUrl = result.secure_url;
+            imageId = result.public_id;
+        }
+
+        const updatedDecoration = await Decoration.findByIdAndUpdate(
+            req.params.id,
+            {
+                $set: {
+                    name,
+                    description,
+                    image: imageUrl,
+                    imageId: imageId,
+                },
+            },
+            { new: true }
+        );
+
+        res.status(200).json({
+            message: "Decoration updated successfully",
+            decoration: updatedDecoration,
+        });
+
+    } catch (err) {
+        console.error("Error updating decoration:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
 });
 
-router.delete('/:id',async(req,res)=>{
-    try{
-        const deletedDecoration = await Decoration.findByIdAndDelete(req.params.id);
-        if(!deletedDecoration){
-            return res.status(404).json({message:"Decoration Not Found"});
+router.delete('/:id', async (req, res) => {
+    try {
+
+        const decoration = await Decoration.findById(req.params.id);
+
+        if (!decoration) {
+            return res.status(404).json({ message: "Decoration not found" });
         }
-        return res.status(200).json({message:"Decoration Deleted Successfully"});
-    }catch(err){
+
+
+        if (decoration.imageId) {
+            await deleteFromCloudinary(decoration.imageId);
+        }
+
+
+        await Decoration.findByIdAndDelete(req.params.id);
+
+        return res.status(200).json({ message: "Decoration deleted successfully" });
+
+    } catch (err) {
         console.error("Error deleting decoration:", err);
-        return res.status(500).json({message:"Internal Server Error"});
+        return res.status(500).json({ message: "Internal Server Error" });
     }
 });
+
 
 module.exports = router;
