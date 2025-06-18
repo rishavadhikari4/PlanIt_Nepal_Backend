@@ -32,11 +32,10 @@ router.post('/',authMiddleware,async(req,res)=>{
     }
 });
 
-router.get('/all-reviews', async (req, res) => {
+router.get('/all-reviews',authMiddleware, async (req,res) => {
   try {
     const reviews = await Review.find()
-      .sort({ createdAt: -1 })
-      .limit(5);                
+      .sort({ createdAt: -1 })            
     res.json(reviews);
   } catch (err) {
     console.error(err);
@@ -70,9 +69,9 @@ router.get('/unverified-reviews', async (req, res) => {
 
 
 
-router.delete('/:id',async (req,res)=>{
+router.delete('/:id',authMiddleware,async (req,res)=>{
   try{
-    const deletedReview = await Review.findByIdAndDelete();
+    const deletedReview = await Review.findByIdAndDelete(req.params.id);
     if(!deletedReview){
       return res.status(404).json({message:"Reivew Not Found"});
     }
@@ -83,7 +82,7 @@ router.delete('/:id',async (req,res)=>{
   }
 });
 
-router.patch('/toggle-verified/:id',async(req,res)=>{
+router.patch('/toggle-verified/:id',authMiddleware,async(req,res)=>{
   const reviewId = req.params.id;
   try{
     const review = await Review.findById(reviewId);
@@ -103,7 +102,6 @@ router.patch('/toggle-verified/:id',async(req,res)=>{
 
   }
 });
-
 
 
 

@@ -103,33 +103,41 @@ router.post('/login',loginLimiter,async(req,res)=>{
 });
 
 //this is the route to login the admin
-router.post('/adminLogin',loginLimiter, async (req, res) => {
-    const { email, password } = req.body;
-    try {
+router.post('/adminLogin', loginLimiter, async (req, res) => {
+  const { email, password } = req.body;
 
-        const isAdminPasswordValid = await bcrypt.compare(password, process.env.ADMIN_PASSWORD);
-        if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
-            const token = jwt.sign(
-                { email: process.env.ADMIN_EMAIL },
-                jwtSecret,
-                { expiresIn: '2h' }
-            );
+  // Check if email and password are provided
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
 
-            return res.json({ token });
-        }
+  try {
+    // The hashed admin password stored in environment variable
+    const hashedAdminPassword = process.env.ADMIN_PASSWORD;
 
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
-        }
+    // Compare the entered password with hashed password
+    const isAdminPasswordValid = await bcrypt.compare(password, hashedAdminPassword);
 
+    if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
+      // Create JWT token with role info
+      const token = jwt.sign(
+        { email: process.env.ADMIN_EMAIL, role: 'admin' },
+        jwtSecret,
+        { expiresIn: '2h' }
+      );
 
-        return res.status(400).json({ message: 'Invalid credentials' });
-
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ message: 'Server error' });
+      return res.json({ token });
     }
+
+    // If credentials are invalid
+    return res.status(400).json({ message: 'Invalid credentials' });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
+
 
 //this is to verfiy the user is verifed or not
 router.get('/verify', authMiddleware, (req, res) => {
