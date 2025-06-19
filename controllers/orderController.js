@@ -48,7 +48,7 @@ router.get('/user-order', authMiddleware, async (req, res) => {
 
 // Admin route to get all orders
 
-router.get('/all-orders', async (req, res) => {
+router.get('/all-orders',authMiddleware, async (req, res) => {
   try {
     const orders = await Order.find().populate('userId', 'email name');
     return res.status(200).json(orders);

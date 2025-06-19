@@ -9,7 +9,7 @@ const router = express.Router();
 
 //this is to post into the API
 
-router.post('/',upload.single('image'),async (req,res)=>{
+router.post('/',upload.single('image'),authMiddleware,async (req,res)=>{
     try{
         const{name,description} = req.body;
         if(!name || !description || !req.file){
@@ -57,7 +57,7 @@ router.get('/:id',async(req,res)=>{
     }
 });
 
-router.patch('/:id', upload.single('image'), async (req, res) => {
+router.patch('/:id', upload.single('image'),authMiddleware, async (req, res) => {
     const { name, description } = req.body;
 
     try {
@@ -107,7 +107,7 @@ router.patch('/:id', upload.single('image'), async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id',authMiddleware, async (req, res) => {
     try {
 
         const decoration = await Decoration.findById(req.params.id);

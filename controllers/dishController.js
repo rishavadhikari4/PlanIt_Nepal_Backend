@@ -1,14 +1,15 @@
 const express = require('express');
 const dishCategory = require('../models/Dishes');
 const upload = require('../middleware/multer');
-const uploadToCloudinary = require('../config/cloudinaryConfig');
+const {deleteFromCloudinary,uploadToCloudinary} = require('../config/cloudinaryConfig');
+const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 
 //this is the api to add dishes to a particular category
 
-router.post('/upload-dish', upload.single('image'), async (req, res) => {
+router.post('/upload-dish', upload.single('image'),authMiddleware, async (req, res) => {
   try {
     const { category, name, description } = req.body;
 
@@ -43,6 +44,69 @@ router.post('/upload-dish', upload.single('image'), async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+// GET /api/dishes/dish/:dishId
+router.get('/dish/:dishId', async (req, res) => {
+  try {
+    const { dishId } = req.params;
+
+    // Find the category that contains the dish with this dishId
+    const category = await dishCategory.findOne({ 'dishes._id': dishId });
+
+    if (!category) {
+      return res.status(404).json({ message: "Dish not found" });
+    }
+
+    // Find the dish inside dishes array
+    const dish = category.dishes.id(dishId);
+
+    if (!dish) {
+      return res.status(404).json({ message: "Dish not found in the category" });
+    }
+
+    // Return dish data and categoryId (category._id)
+    res.status(200).json({
+      message: "Dish found successfully",
+      dish,
+      categoryId: category._id,
+      categoryName: category.category // optional, if you want to send category name also
+    });
+
+  } catch (err) {
+    console.error("Error fetching dish by ID:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.delete('/category/:categoryId', authMiddleware,async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    // Find the category to delete
+    const category = await dishCategory.findById(categoryId);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    // Delete all images of dishes from Cloudinary before deleting the category
+    for (const dish of category.dishes) {
+      if (dish.imageId) {
+        await deleteFromCloudinary(dish.imageId);
+      }
+    }
+
+    // Delete the category document
+    await dishCategory.findByIdAndDelete(categoryId);
+
+    res.status(200).json({ message: "Category and all its dishes deleted successfully" });
+
+  } catch (err) {
+    console.error("Error deleting category:", err);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+
 
 //this is to get a particular category dishes
 router.get('/:category',async(req,res)=>{
@@ -83,7 +147,7 @@ router.get('/',async(req,res)=>{
 
 
 
-router.patch('/category/:categoryId/dish/:dishId', upload.single('image'), async (req, res) => {
+router.patch('/category/:categoryId/dish/:dishId',authMiddleware, upload.single('image'), async (req, res) => {
     try {
         const { categoryId, dishId } = req.params;
         const { name, description } = req.body;
@@ -131,7 +195,7 @@ router.patch('/category/:categoryId/dish/:dishId', upload.single('image'), async
 //this api to delete a dish from a category
 
 
-router.delete('/category/:categoryId/dish/:dishId', async (req, res) => {
+router.delete('/category/:categoryId/dish/:dishId',authMiddleware, async (req, res) => {
   try {
     const { categoryId, dishId } = req.params;
 

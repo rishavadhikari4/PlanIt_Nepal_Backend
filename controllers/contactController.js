@@ -1,5 +1,6 @@
 const express = require("express");
 const Contact = require("../models/Contact");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.post("/", async(req,res)=>{
     }
 });
 
-router.get("/",async(req,res)=>{
+router.get("/",authMiddleware,async(req,res)=>{
     try{
         const contacts = await Contact.find();
         return res.status(200).json({message:"Contacts fetched Successfully",contacts});

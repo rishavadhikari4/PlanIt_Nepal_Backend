@@ -8,7 +8,7 @@ const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryC
 const router = express.Router();
 
 // Create a new venue
-router.post('/', upload.single('image'),async (req, res) =>{
+router.post('/', upload.single('image'),authMiddleware,async (req, res) =>{
     try{
         const{name,location,description} = req.body;
         if(!name || !location || !description || !req.file){
@@ -54,7 +54,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 // Update a venue by ID
-router.patch('/:id', upload.single('image'),async (req, res) => {
+router.patch('/:id', upload.single('image'),authMiddleware,async (req, res) => {
     const { name, location, description} = req.body;
     try {
         const venue = await Venue.findById(req.params.id);
@@ -94,7 +94,7 @@ router.patch('/:id', upload.single('image'),async (req, res) => {
     }
 });
 // Delete a venue by ID
-router.delete('/:id', async (req, res) => {
+router.delete('/:id',authMiddleware, async (req, res) => {
     try {
         const venue =  await Venue.findById(req.params.id);
 
