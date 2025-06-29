@@ -89,7 +89,8 @@ router.post('/login',loginLimiter,async(req,res)=>{
         const token = jwt.sign(
             { id: user._id ,
               email: user.email,
-              name: user.name
+              name: user.name,
+              role: 'customer'
             },
             jwtSecret,
             { expiresIn: '2h' }
@@ -121,7 +122,8 @@ router.post('/adminLogin', loginLimiter, async (req, res) => {
     if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
       // Create JWT token with role info
       const token = jwt.sign(
-        { email: process.env.ADMIN_EMAIL, role: 'admin' },
+        { email: process.env.ADMIN_EMAIL, 
+        role: 'admin' },
         jwtSecret,
         { expiresIn: '2h' }
       );
