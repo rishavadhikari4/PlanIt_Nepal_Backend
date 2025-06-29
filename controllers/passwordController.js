@@ -83,20 +83,21 @@ router.post('/forgotpassword', forgotPasswordLimiter, async (req, res) => {
         const transporter = nodemailer.createTransport({
             service: `gmail`,
             auth: {
-                type: `OAuth2`,
-                user: process.env.USER_EMAIL,
-                clientId: process.env.CLIENT_ID,
-                clientSecret: process.env.CLIENT_SECRET,
-                refreshToken: process.env.REFRESH_TOKEN,
-                accessToken: accessToken
+              type: 'OAuth2',
+              user: process.env.USER_EMAIL,
+              clientId: process.env.GOOGLE_CLIENT_ID,
+              clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+              refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+              accessToken: accessToken
             }
+
         });
         const user = await User.findOne({ email });
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
         const resetToken = crypto.randomBytes(32).toString("hex");
-        const resetLink = `http://localhost:3000/resetpassword/${resetToken}`;
+        const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
         const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
         user.resetPasswordToken = hashedToken;
