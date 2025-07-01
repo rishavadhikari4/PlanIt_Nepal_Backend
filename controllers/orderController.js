@@ -22,6 +22,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const newOrder = new Order({
       userId: req.user.id,
+      status:"pending",
       items: orderItems
     });
 

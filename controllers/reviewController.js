@@ -20,6 +20,7 @@ router.post('/',authMiddleware,async(req,res)=>{
             user:{
                 _id:user._id,
                 name:user.name,
+                profileImage:user.profileImage,
             },
             rating,
             comment,
@@ -47,7 +48,7 @@ router.get('/verified-reviews', async (req, res) => {
   try {
     const reviews = await Review.find({ verified: true })  // only verified reviews
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(6);
     res.json(reviews);
   } catch (err) {
     console.error(err);
@@ -57,7 +58,7 @@ router.get('/verified-reviews', async (req, res) => {
 
 router.get('/unverified-reviews', async (req, res) => {
   try {
-    const reviews = await Review.find({ verified: false })  // only verified reviews
+    const reviews = await Review.find({ verified: false })  // only unverified reviews
       .sort({ createdAt: -1 })
       .limit(5);
     res.json(reviews);

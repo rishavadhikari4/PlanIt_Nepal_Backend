@@ -10,10 +10,12 @@ const orderItemSchema = new mongoose.Schema({
                     quantity: { 
                         type: Number, 
                         required: true }
+
 });
 
 const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  status:{ type:String, required:true,},
   items: [orderItemSchema], // Array of order items
   createdAt: { type: Date, default: Date.now }
 });
