@@ -160,7 +160,7 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
 
 
   const token = jwt.sign(
-    { id: user._id, name: user.name, email: user.email },
+    { id: user._id, name: user.name, email: user.email,role:'customer' },
     jwtSecret,
     { expiresIn: "2h" }
   );
