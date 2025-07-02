@@ -11,14 +11,15 @@ const router = express.Router();
 
 router.post('/',upload.single('image'),authMiddleware,async (req,res)=>{
     try{
-        const{name,description} = req.body;
-        if(!name || !description || !req.file){
+        const{name,description,price} = req.body;
+        if(!name || !description || !req.file || !price ){
             return res.status(400).json({message:"please Fill all fields"});
         }
         const result = await uploadToCloudinary(req.file.buffer);
         const newDecoration = new Decoration({
             name,
             description,
+            price,
             image:result.secure_url,
             imageId : result.public_id
         });
@@ -58,7 +59,7 @@ router.get('/:id',async(req,res)=>{
 });
 
 router.patch('/:id', upload.single('image'),authMiddleware, async (req, res) => {
-    const { name, description } = req.body;
+    const { name, description, price } = req.body;
 
     try {
 
@@ -89,6 +90,7 @@ router.patch('/:id', upload.single('image'),authMiddleware, async (req, res) => 
                 $set: {
                     name,
                     description,
+                    price,
                     image: imageUrl,
                     imageId: imageId,
                 },

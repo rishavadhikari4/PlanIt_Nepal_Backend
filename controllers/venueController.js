@@ -10,8 +10,8 @@ const router = express.Router();
 // Create a new venue
 router.post('/', upload.single('image'),authMiddleware,async (req, res) =>{
     try{
-        const{name,location,description} = req.body;
-        if(!name || !location || !description || !req.file){
+        const{name,location,description,price} = req.body;
+        if(!name || !location || !description || !req.file || !price){
             return res.status(400).json({message: 'Please fill all fields'});
         }
         const result = await uploadToCloudinary(req.file.buffer);
@@ -19,6 +19,7 @@ router.post('/', upload.single('image'),authMiddleware,async (req, res) =>{
             name,
             location,
             description,
+            price,
             image : result.secure_url,
             imageId: result.public_id
 
@@ -55,7 +56,7 @@ router.get('/:id', async (req, res) => {
 });
 // Update a venue by ID
 router.patch('/:id', upload.single('image'),authMiddleware,async (req, res) => {
-    const { name, location, description} = req.body;
+    const { name, location, description,price} = req.body;
     try {
         const venue = await Venue.findById(req.params.id);
         if(!venue){
@@ -80,6 +81,7 @@ router.patch('/:id', upload.single('image'),authMiddleware,async (req, res) => {
                     name,
                     location,
                     description,
+                    price,
                     image:imageUrl,
                     imageId:imageId 
                 } 

@@ -13,7 +13,7 @@ const contactSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    budget: {
+    price: {
         type: Number,
         required: true,
     },

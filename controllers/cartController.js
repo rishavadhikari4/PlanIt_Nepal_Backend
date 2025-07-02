@@ -7,13 +7,14 @@ const router = express.Router();
 
 router.post('/',authMiddleware,async(req , res)=>{
     try{
-        const {name, image, quantity} = req.body;
-        if(!name || !image || !quantity){
+        const {name,price, image, quantity} = req.body;
+        if(!name || !price || !image || !quantity){
             return res.status(400).json({message:"Please fill all fields"});
         }
         const newCart = new Cart({
             userId: req.user.id,
             name,
+            price,
             image,
             quantity
         });

@@ -8,15 +8,15 @@ const router = express.Router();
 //this is to post into the contact collection
 router.post("/", async(req,res)=>{
     try{
-        const {name,email,phone,budget,message} = req.body;
-        if(!name || !email || !phone || !budget){
+        const {name,email,phone,price,message} = req.body;
+        if(!name || !email || !phone || !price){
             return res.status(400).json({message:"Please Fill all fields"});
         }
         const newContact = new Contact({
             name,
             email,
             phone,
-            budget,
+            price,
             message
         });
         await newContact.save();

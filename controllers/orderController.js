@@ -16,14 +16,20 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const orderItems = cartItems.map(item => ({
       name: item.name,
+      price: item.price,
       image: item.image,
       quantity: item.quantity
     }));
 
+    const totalAmount = cartItems.reduce((total, item) => {
+      return total + (parseFloat(item.price) * item.quantity); }, 0);
+
+
     const newOrder = new Order({
       userId: req.user.id,
       status:"pending",
-      items: orderItems
+      items: orderItems,
+      totalAmount
     });
 
     await newOrder.save(); // Save the order
@@ -74,6 +80,37 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     return res.status(500).json({ message: "Internal Server Error" });
   }
 });
+
+router.post('/:id', authMiddleware, async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const { status } = req.body;
+
+    if (!status || !["pending", "processing", "completed","cancelled"].includes(status)) {
+      return res.status(400).json({ message: "Invalid or missing status" });
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { status },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    return res.status(200).json({
+      message: "Order status updated successfully",
+      order: updatedOrder
+    });
+
+  } catch (err) {
+    console.error("Error updating order status:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 
 
 module.exports = router;

@@ -11,9 +11,9 @@ const router = express.Router();
 
 router.post('/upload-dish', upload.single('image'),authMiddleware, async (req, res) => {
   try {
-    const { category, name, description } = req.body;
+    const { category, name, price, description } = req.body;
 
-    if (!category || !name || !req.file) {
+    if (!category || !name || !price || !description || !req.file) {
       return res.status(400).json({ message: 'Please provide category, dish name, and image' });
     }
 
@@ -22,6 +22,7 @@ router.post('/upload-dish', upload.single('image'),authMiddleware, async (req, r
 
     const newDish = {
       name,
+      price,
       description,
       image: result.secure_url,
       imageId: result.public_id
@@ -150,7 +151,7 @@ router.get('/',async(req,res)=>{
 router.patch('/category/:categoryId/dish/:dishId',authMiddleware, upload.single('image'), async (req, res) => {
     try {
         const { categoryId, dishId } = req.params;
-        const { name, description } = req.body;
+        const { name , price , description } = req.body;
 
 
         const category = await dishCategory.findById(categoryId);
@@ -177,6 +178,7 @@ router.patch('/category/:categoryId/dish/:dishId',authMiddleware, upload.single(
 
 
         if (name) dish.name = name;
+        if (price) dish.price = price;
         if (description) dish.description = description;
 
         await category.save();
