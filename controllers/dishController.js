@@ -78,7 +78,7 @@ router.get('/dish/:dishId', async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
+//delete a whole category
 router.delete('/category/:categoryId', authMiddleware,async (req, res) => {
   try {
     const { categoryId } = req.params;
@@ -147,7 +147,7 @@ router.get('/',async(req,res)=>{
 );
 
 
-
+//edit the dish
 router.patch('/category/:categoryId/dish/:dishId',authMiddleware, upload.single('image'), async (req, res) => {
     try {
         const { categoryId, dishId } = req.params;
@@ -195,8 +195,6 @@ router.patch('/category/:categoryId/dish/:dishId',authMiddleware, upload.single(
 });
 
 //this api to delete a dish from a category
-
-
 router.delete('/category/:categoryId/dish/:dishId',authMiddleware, async (req, res) => {
   try {
     const { categoryId, dishId } = req.params;

@@ -225,19 +225,30 @@ router.get('/allUsers', authMiddleware, async (req, res) => {
 });
 
 //this is the route to remove the user from the database
-router.delete('/:id',authMiddleware,async(req,res)=>{
-    try{
-        const userId = req.params.id;
-        const deletedUserId = User.findByIdAndDelete(userId);
-    if(!deletedUserId){
-        return res.status(404).json({message:"User Not found"});
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // 1. Find the user first
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // 2. Delete profile image from Cloudinary if it has a custom one
+    if (user.profileImageId) {
+        await deleteFromCloudinary(user.profileImageId);
     }
-    return res.status(200).json({message:"User deleted succesfully"});
-    }catch(err){
-        console.error("Error deleting the User:",err);
-        return res.status(500).json({message:"Internal Server Error"});
-    }
+
+    // 3. Delete user from DB
+    await User.findByIdAndDelete(userId);
+
+    return res.status(200).json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting the user:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
 });
+
+
 
 
 router.patch('/update-profile-pic', upload.single('image'), authMiddleware, async (req, res) => {
