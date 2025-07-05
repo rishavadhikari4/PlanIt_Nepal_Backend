@@ -54,6 +54,14 @@ router.post('/register',registerLimiter,async(req , res)=>{
         });
         await newUser.save();
 
+        const token = jwt.sign({
+            id:newUser._id,
+            name:newUser.name,
+            email:newUser.email
+        },jwtSecret,
+        {expiresIn:"2h"}
+    );
+    res.json({token});
     }catch(err){
         console.error(err);
         res.status(500).json({message:"Server error"});
@@ -217,7 +225,7 @@ router.get('/allUsers', authMiddleware, async (req, res) => {
 });
 
 //this is the route to remove the user from the database
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/oneAccount/:id', authMiddleware, async (req, res) => {
   try {
     const userId = req.params.id;
 
@@ -243,7 +251,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 router.delete('/ownAccount/:id', authMiddleware, async (req, res) => {
   try {
     const { password } = req.body;
-    const userId = req.params.id; // ✅ Get from authMiddleware
+    const userId = req.params.id;
 
     // 1. Find the user
     const user = await User.findById(userId);
