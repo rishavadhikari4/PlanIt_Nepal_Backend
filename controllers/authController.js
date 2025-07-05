@@ -54,14 +54,6 @@ router.post('/register',registerLimiter,async(req , res)=>{
         });
         await newUser.save();
 
-        const token = jwt.sign({
-            id:newUser._id,
-            name:newUser.name,
-            email:newUser.email
-        },jwtSecret,
-        {expiresIn:"2h"}
-    );
-    res.json({token});
     }catch(err){
         console.error(err);
         res.status(500).json({message:"Server error"});
@@ -248,7 +240,35 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+router.delete('/ownAccount/:id', authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const userId = req.params.id; // ✅ Get from authMiddleware
 
+    // 1. Find the user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // 2. Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Incorrect password' });
+    }
+
+    // 3. Delete profile image from Cloudinary if exists
+    if (user.profileImageId) {
+      await deleteFromCloudinary(user.profileImageId);
+    }
+
+    // 4. Delete user from DB
+    await User.findByIdAndDelete(userId);
+
+    return res.status(200).json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting the user:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+});
 
 
 router.patch('/update-profile-pic', upload.single('image'), authMiddleware, async (req, res) => {
