@@ -33,7 +33,7 @@ if (!jwtSecret) {
 
 //this is the route to register new user
 router.post('/register',registerLimiter,async(req , res)=>{
-    const {name, email, password, confirmPassword} = req.body;
+    const {name, email , number, password, confirmPassword} = req.body;
     if(password !== confirmPassword){
         return res.status(400).json({message:"Passwords do not match"});
     }
@@ -41,23 +41,30 @@ router.post('/register',registerLimiter,async(req , res)=>{
         return res.status(400).json({message:"Password is required and must be a valid string"});
     }
     try{
+
         const userExist = await User.findOne({email});
         if(userExist){
             return res.status(400).json({message:"User already exists"});
         }
+
+        const phoneExists = await User.findOne({number});
+        if(phoneExists){
+            return res.status(400).json({message:"Phone number is already used"});
+        }
+
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         const newUser = new User({
             name,
             email,
-            password:hashedPassword
+            number,
+            password:hashedPassword,
+            role:'customer'
         });
         await newUser.save();
 
         const token = jwt.sign({
             id:newUser._id,
-            name:newUser.name,
-            email:newUser.email
         },jwtSecret,
         {expiresIn:"2h"}
     );
@@ -87,11 +94,7 @@ router.post('/login',loginLimiter,async(req,res)=>{
         }
 
         const token = jwt.sign(
-            { id: user._id ,
-              email: user.email,
-              name: user.name,
-              role: 'customer'
-            },
+            { id: user._id },
             jwtSecret,
             { expiresIn: '2h' }
         );
@@ -160,7 +163,7 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
 
 
   const token = jwt.sign(
-    { id: user._id, name: user.name, email: user.email,role:'customer' },
+    { id: user._id, name: user.name, email: user.email },
     jwtSecret,
     { expiresIn: "2h" }
   );
@@ -188,7 +191,7 @@ router.get(`/profile`,authMiddleware,async(req,res)=>{
 //this is the route to edit the user profile
 router.patch('/update-profile', authMiddleware, async (req, res) => {
     try {
-        const { name, email } = req.body;
+        const { name, email, number } = req.body;
         const user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({ message: 'User Not Found' });
@@ -200,6 +203,13 @@ router.patch('/update-profile', authMiddleware, async (req, res) => {
                 return res.status(400).json({ message: 'Email already in use by another account' });
             }
             user.email = email;
+        }
+        if (number && number !== user.number) {
+            const numberExists = await User.findOne({ number });
+            if (numberExists) {
+                return res.status(400).json({ message: 'Number already in use by another account' });
+            }
+            user.number = number;
         }
 
         if (name) user.name = name;

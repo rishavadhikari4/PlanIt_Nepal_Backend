@@ -21,6 +21,7 @@ passport.use(
                         name,
                         email,
                         password:"",
+                        role:"customer",
                         profileImage,
                     });
                 }
