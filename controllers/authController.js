@@ -26,8 +26,8 @@ const registerLimiter = rateLimit({
   message: 'Too many registration attempts, try again later'
 });
 
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) {
+const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+if (!accessTokenSecret) {
   throw new Error("JWT_SECRET is not defined in environment variables");
 }
 
@@ -65,7 +65,7 @@ router.post('/register',registerLimiter,async(req , res)=>{
 
         const accessToken = jwt.sign({
             id:newUser._id,
-        },jwtSecret,
+        },accessTokenSecret,
         {expiresIn:"2h"}
     );
     res.json({accessToken});
@@ -95,7 +95,7 @@ router.post('/login',loginLimiter,async(req,res)=>{
 
         const accessToken = jwt.sign(
             { id: user._id },
-            jwtSecret,
+            accessTokenSecret,
             { expiresIn: '2h' }
         );
 
@@ -127,7 +127,7 @@ router.post('/adminLogin', loginLimiter, async (req, res) => {
       const accessToken = jwt.sign(
         { email: process.env.ADMIN_EMAIL, 
         role: 'admin' },
-        jwtSecret,
+        accessTokenSecret,
         { expiresIn: '2h' }
       );
 
@@ -164,7 +164,7 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
 
   const accessToken = jwt.sign(
     { id: user._id, name: user.name, email: user.email },
-    jwtSecret,
+    accessTokenSecret,
     { expiresIn: "2h" }
   );
 
