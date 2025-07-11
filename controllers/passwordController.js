@@ -1,3 +1,16 @@
+/**
+ * @module controllers/passwordController
+ * @description Handles all password-related operations including password changes and resets
+ * @requires bcryptjs
+ * @requires express
+ * @requires ../models/User
+ * @requires ../middleware/authMiddleware
+ * @requires nodemailer
+ * @requires googleapis
+ * @requires express-rate-limit
+ * @requires crypto
+ * @requires dotenv
+ */
 const bcrypt = require(`bcryptjs`);
 const express = require(`express`);
 const User = require(`../models/User`);
@@ -10,6 +23,10 @@ require(`dotenv`).config();
 
 const router = express.Router();
 
+/**
+ * Rate limiter for password reset requests
+ * Limits to 5 requests per 15 minutes from the same IP
+ */
 const forgotPasswordLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
     max: 5, 
@@ -20,7 +37,9 @@ const forgotPasswordLimiter = rateLimit({
     legacyHeaders: false   
 });
 
-
+/**
+ * Google OAuth2 client configuration for sending emails
+ */
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID; 
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET; 
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
@@ -35,9 +54,19 @@ const oAuth2Client = new google.auth.OAuth2(
 // Set the refresh token
 oAuth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
-
-//this is the api to change the password for the logged in users
-
+/**
+ * @route PATCH /api/password/changepassword
+ * @description Change password for authenticated user
+ * @access Private
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.currentPassword - User's current password
+ * @param {string} req.body.newPassword - New password
+ * @param {string} req.body.confirmNewPassword - Confirmation of new password
+ * @returns {Object} 200 - Success message
+ * @returns {Object} 400 - Validation error or incorrect current password
+ * @returns {Object} 404 - User not found
+ * @returns {Object} 500 - Server error
+ */
 router.patch(`/changepassword`, authMiddleware, async (req, res) => {
     const { currentPassword, newPassword, confirmNewPassword } = req.body;
 
@@ -73,8 +102,17 @@ router.patch(`/changepassword`, authMiddleware, async (req, res) => {
     }
 });
 
-//this is the api to change the password through the email of the logged in user
-
+/**
+ * @route POST /api/password/forgotpassword
+ * @description Send password reset email with reset link
+ * @access Public
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.email - User's email address
+ * @returns {Object} 200 - Email sent message
+ * @returns {Object} 404 - User not found
+ * @returns {Object} 429 - Rate limit exceeded
+ * @returns {Object} 500 - Server error
+ */
 router.post('/forgotpassword', forgotPasswordLimiter, async (req, res) => {
     const { email } = req.body;
     try {
@@ -123,8 +161,18 @@ router.post('/forgotpassword', forgotPasswordLimiter, async (req, res) => {
     }
 });
 
-
-
+/**
+ * @route POST /api/password/resetpassword/:token
+ * @description Reset password using the token from email
+ * @access Public
+ * @param {string} req.params.token - Reset password token from email
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.newPassword - New password
+ * @param {string} req.body.confirmNewPassword - Confirmation of new password
+ * @returns {Object} 200 - Password reset success message
+ * @returns {Object} 400 - Invalid/expired token or validation error
+ * @returns {Object} 500 - Server error
+ */
 router.post('/resetpassword/:token', async (req, res) => {
     const { token } = req.params;
     const { newPassword, confirmNewPassword } = req.body;

@@ -21,6 +21,10 @@ const userSchema = new mongoose.Schema({
         type:String,
         required:true
     },
+    refreshToken:{
+        type:String,
+        default:null
+    },
     profileImage:{
         type:String,
         default: "https://res.cloudinary.com/de1lvlqme/image/upload/v1749566197/vecteezy_default-profile-account-unknown-icon-black-silhouette_20765399_ldtak0.jpg"
@@ -36,6 +40,13 @@ const userSchema = new mongoose.Schema({
     resetPasswordExpire:{
         type:Date,
         default:null
+    },
+    failedLoginAttempts:{
+        type:Number,
+        default:0
+    },
+    lockUntil:{
+        type: Date
     }
 }, { timestamps: true });
 

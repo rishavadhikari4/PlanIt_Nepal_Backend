@@ -1,3 +1,12 @@
+/**
+ * @module controllers/decorationController
+ * @description Handles all decoration-related operations
+ * @requires express
+ * @requires ../models/Decoration
+ * @requires ../middleware/authMiddleware
+ * @requires ../middleware/multer
+ * @requires ../config/cloudinaryConfig
+ */
 const express = require('express');
 const Decoration = require('../models/Decoration');
 const authMiddleware = require('../middleware/authMiddleware');
@@ -7,8 +16,19 @@ const upload = require('../middleware/multer');
 
 const router = express.Router();
 
-//this is to post into the API
-
+/**
+ * @route POST /api/decorations
+ * @description Create a new decoration with image upload
+ * @access Private (Admin only)
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.name - Decoration name
+ * @param {string} req.body.description - Decoration description
+ * @param {number} req.body.price - Decoration price
+ * @param {File} req.file - Decoration image file
+ * @returns {Object} 201 - Created decoration object
+ * @returns {Object} 400 - Missing required fields
+ * @returns {Object} 500 - Server error
+ */
 router.post('/',upload.single('image'),authMiddleware,async (req,res)=>{
     try{
         const{name,description,price} = req.body;
@@ -32,8 +52,13 @@ router.post('/',upload.single('image'),authMiddleware,async (req,res)=>{
     }
 });
 
-//this is to get all the decorations
-
+/**
+ * @route GET /api/decorations
+ * @description Get all decorations
+ * @access Public
+ * @returns {Object} 200 - Array of all decorations
+ * @returns {Object} 500 - Server error
+ */
 router.get('/',async(req,res)=>{
     try{
         const decorations = await Decoration.find();
@@ -43,7 +68,16 @@ router.get('/',async(req,res)=>{
         return res.status(500).json({message:"internal server error"});
     }
 });
-//get a particular decoration
+
+/**
+ * @route GET /api/decorations/:id
+ * @description Get a specific decoration by ID
+ * @access Public
+ * @param {string} req.params.id - Decoration ID
+ * @returns {Object} 200 - Decoration object
+ * @returns {Object} 404 - Decoration not found
+ * @returns {Object} 500 - Server error
+ */
 router.get('/:id',async(req,res)=>{
     try{
         const decoration = await Decoration.findById(req.params.id);
@@ -58,6 +92,20 @@ router.get('/:id',async(req,res)=>{
     }
 });
 
+/**
+ * @route PATCH /api/decorations/:id
+ * @description Update a decoration by ID, including optional image update
+ * @access Private (Admin only)
+ * @param {string} req.params.id - Decoration ID
+ * @param {Object} req.body - Request body
+ * @param {string} [req.body.name] - Updated decoration name
+ * @param {string} [req.body.description] - Updated decoration description
+ * @param {number} [req.body.price] - Updated decoration price
+ * @param {File} [req.file] - Updated decoration image file
+ * @returns {Object} 200 - Updated decoration object
+ * @returns {Object} 404 - Decoration not found
+ * @returns {Object} 500 - Server error
+ */
 router.patch('/:id', upload.single('image'),authMiddleware, async (req, res) => {
     const { name, description, price } = req.body;
 
@@ -109,6 +157,15 @@ router.patch('/:id', upload.single('image'),authMiddleware, async (req, res) => 
     }
 });
 
+/**
+ * @route DELETE /api/decorations/:id
+ * @description Delete a decoration by ID, including associated image
+ * @access Private (Admin only)
+ * @param {string} req.params.id - Decoration ID
+ * @returns {Object} 200 - Success message
+ * @returns {Object} 404 - Decoration not found
+ * @returns {Object} 500 - Server error
+ */
 router.delete('/:id',authMiddleware, async (req, res) => {
     try {
 
@@ -133,6 +190,5 @@ router.delete('/:id',authMiddleware, async (req, res) => {
         return res.status(500).json({ message: "Internal Server Error" });
     }
 });
-
 
 module.exports = router;

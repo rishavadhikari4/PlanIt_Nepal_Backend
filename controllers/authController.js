@@ -3,14 +3,25 @@ const passport = require("passport");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require('express-rate-limit');
-
-
 require("dotenv").config();
 
 const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
 const upload = require('../middleware/multer');
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
+const { 
+  generateAccessToken, 
+  generateRefreshToken, 
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie
+} = require('../utils/tokenHelpers');
+
+const {
+  registerValidation,
+  loginValidation,
+  profileUpdateValidation,
+  accountDeleteValidation
+} = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -28,86 +39,103 @@ const registerLimiter = rateLimit({
 
 const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
 if (!accessTokenSecret) {
-  throw new Error("JWT_SECRET is not defined in environment variables");
+  throw new Error("Access Token is not defined in environment variables");
+}
+
+const refreshTokenSecret = process.env.REFRESH_TOKEN_SECRET;
+if(!refreshTokenSecret){
+    throw new Error("Refresh Token is not defined in the environment variable")
 }
 
 //this is the route to register new user
-router.post('/register',registerLimiter,async(req , res)=>{
-    const {name, email , number, password, confirmPassword} = req.body;
-    if(password !== confirmPassword){
-        return res.status(400).json({message:"Passwords do not match"});
+router.post('/register', registerLimiter, registerValidation, async (req, res) => {
+  const { name, email, number, password } = req.body;
+  try {
+    // Validation is already done by middleware
+    const userExist = await User.findOne({ email });
+    if (userExist) {
+      return res.status(400).json({ message: "User already exists" });
     }
-    if(!password || typeof password !== 'string' || password.trim() === ''){
-        return res.status(400).json({message:"Password is required and must be a valid string"});
+
+    const phoneExists = await User.findOne({ number });
+    if (phoneExists) {
+      return res.status(400).json({ message: "Phone number is already used" });
     }
-    try{
 
-        const userExist = await User.findOne({email});
-        if(userExist){
-            return res.status(400).json({message:"User already exists"});
-        }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    const newUser = new User({
+      name,
+      email,
+      number,
+      password: hashedPassword,
+      role: 'customer'
+    });
+    await newUser.save();
 
-        const phoneExists = await User.findOne({number});
-        if(phoneExists){
-            return res.status(400).json({message:"Phone number is already used"});
-        }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const newUser = new User({
-            name,
-            email,
-            number,
-            password:hashedPassword,
-            role:'customer'
-        });
-        await newUser.save();
-
-        const accessToken = jwt.sign({
-            id:newUser._id,
-        },accessTokenSecret,
-        {expiresIn:"2h"}
-    );
-    res.json({accessToken});
-    }catch(err){
-        console.error(err);
-        res.status(500).json({message:"Server error"});
-    }
+    res.status(200).json({ message: "Your account is registered successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 //this is the route for the normal user login
-router.post('/login',loginLimiter,async(req,res)=>{
-     const { email, password } = req.body;
-    try {
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
-        }
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-        
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        const accessToken = jwt.sign(
-            { id: user._id },
-            accessTokenSecret,
-            { expiresIn: '2h' }
-        );
-
-        res.json({accessToken});
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ message: 'Server error' });
+router.post('/login', loginLimiter, loginValidation, async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
+    
+    // Check if account is locked
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+      const timeLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+      return res.status(423).json({ 
+        message: `Account is locked due to too many failed attempts. Try again in ${timeLeft} minutes.` 
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      // Increment failed login attempts
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      
+      // Lock account after 5 failed attempts
+      if (user.failedLoginAttempts >= 5) {
+        user.lockUntil = new Date(Date.now() + 15 * 60000); // Lock for 15 minutes
+        await user.save();
+        return res.status(423).json({ message: 'Account locked due to too many failed attempts. Try again in 15 minutes.' });
+      }
+      
+      await user.save();
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Reset failed attempts on successful login
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
+    
+    // Continue with your existing login logic
+    const refreshToken = generateRefreshToken(user);
+    const accessToken = generateAccessToken(user);
+    
+    user.refreshToken = refreshToken;
+    await user.save();
+    
+    setRefreshTokenCookie(res, refreshToken);
+    
+    res.json({accessToken});
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 //this is the route to login the admin
-router.post('/adminLogin', loginLimiter, async (req, res) => {
+router.post('/adminLogin', loginLimiter, loginValidation, async (req, res) => {
   const { email, password } = req.body;
 
   // Check if email and password are provided
@@ -124,11 +152,9 @@ router.post('/adminLogin', loginLimiter, async (req, res) => {
 
     if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
       // Create JWT accessToken with role info
-      const accessToken = jwt.sign(
-        { email: process.env.ADMIN_EMAIL, 
-        role: 'admin' },
-        accessTokenSecret,
-        { expiresIn: '2h' }
+      const accessToken = generateAccessToken(
+        { _id: 'admin' }, 
+        { email: process.env.ADMIN_EMAIL, role: 'admin' }
       );
 
       return res.json({ accessToken });
@@ -158,24 +184,51 @@ router.get('/verify', authMiddleware, (req, res) => {
 //this is the route for the Oauth2 verification
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-router.get("/google/callback", passport.authenticate("google", { session: false }), (req, res) => {
-  const user = req.user;
+router.get("/google/callback", passport.authenticate("google", { session: false }), async (req, res) => {
+  try {
+    const user = req.user;
 
+    const accessToken = jwt.sign(
+      { id: user._id, name: user.name, email: user.email },
+      accessTokenSecret,
+      { expiresIn: "2h" }
+    );
 
-  const accessToken = jwt.sign(
-    { id: user._id, name: user.name, email: user.email },
-    accessTokenSecret,
-    { expiresIn: "2h" }
-  );
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      refreshTokenSecret,
+      { expiresIn: "7d" }
+    );
 
-  res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?accessToken=${accessToken}`);
+    // Save refresh token to user
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    // Set refresh token as HTTP-only cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    // Redirect with access token only
+    res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?accessToken=${accessToken}`);
+  } catch (err) {
+    console.error("Google OAuth callback error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 
 //this is the route to get the particular user profile
 router.get(`/profile`,authMiddleware,async(req,res)=>{
     try{
-        const user = await User.findById(req.user.id).select(`-password`);
+        const user = await User.findById(req.user.id)
+        .select(`-password`)
+        .select('-refreshToken')
+        .select('-resetPasswordToken')
+        .select('-resetPasswordExpire');
         if(!user){
             return res.status(404).json({message:`User not found`});
         }
@@ -189,7 +242,7 @@ router.get(`/profile`,authMiddleware,async(req,res)=>{
 });
 
 //this is the route to edit the user profile
-router.patch('/update-profile', authMiddleware, async (req, res) => {
+router.patch('/update-profile', authMiddleware, profileUpdateValidation, async (req, res) => {
     try {
         const { name, email, number } = req.body;
         const user = await User.findById(req.user.id);
@@ -258,7 +311,7 @@ router.delete('/oneAccount/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/ownAccount/:id', authMiddleware, async (req, res) => {
+router.delete('/ownAccount/:id', authMiddleware, accountDeleteValidation, async (req, res) => {
   try {
     const { password } = req.body;
     const userId = req.params.id;
@@ -317,6 +370,56 @@ router.patch('/update-profile-pic', upload.single('image'), authMiddleware, asyn
         console.error(err);
         res.status(500).json({ message: "Internal server error" });
     }
+});
+
+router.post('/refresh-token', async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Refresh token missing' });
+    }
+
+    // Verify refresh token
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, refreshTokenSecret);
+    } catch (err) {
+      return res.status(403).json({ message: 'Invalid refresh token' });
+    }
+
+    // Find user and check if refresh token matches
+    const user = await User.findById(payload.id);
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(403).json({ message: 'Refresh token not valid for user' });
+    }
+
+    // Issue new access token
+    const accessToken = jwt.sign(
+      { id: user._id },
+      accessTokenSecret,
+      { expiresIn: '2h' }
+    );
+
+    res.json({ accessToken });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/logout', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (user) {
+      user.refreshToken = undefined;
+      await user.save();
+    }
+    clearRefreshTokenCookie(res);
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ message: 'Server error during logout' });
+  }
 });
 
 module.exports = router;
