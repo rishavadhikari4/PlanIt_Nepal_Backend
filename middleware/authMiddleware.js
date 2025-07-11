@@ -12,21 +12,21 @@ const authMiddleware = (req, res, next) => {
             return res.status(401).json({ message: "No token, authorization denied" });
         }
 
-        const token = authHeader.split(" ")[1].trim();
+        const accessToken = authHeader.split(" ")[1].trim();
         const secret = process.env.JWT_SECRET;
         if (!secret) {
             throw new Error("JWT_SECRET not defined");
         }
 
-        const decoded = jwt.verify(token, secret);
+        const decoded = jwt.verify(accessToken, secret);
         req.user = decoded;
         next();
 
     } catch (error) {
         if (error.name === "TokenExpiredError") {
-            return res.status(401).json({ message: "Token expired" });
+            return res.status(401).json({ message: "accessToken expired" });
         } else if (error.name === "JsonWebTokenError") {
-            return res.status(401).json({ message: "Invalid token" });
+            return res.status(401).json({ message: "Invalid accessToken" });
         } else {
             console.error("Authentication error:", error);
             return res.status(500).json({ message: "Server error during authentication" });

@@ -63,12 +63,12 @@ router.post('/register',registerLimiter,async(req , res)=>{
         });
         await newUser.save();
 
-        const token = jwt.sign({
+        const accessToken = jwt.sign({
             id:newUser._id,
         },jwtSecret,
         {expiresIn:"2h"}
     );
-    res.json({token});
+    res.json({accessToken});
     }catch(err){
         console.error(err);
         res.status(500).json({message:"Server error"});
@@ -93,13 +93,13 @@ router.post('/login',loginLimiter,async(req,res)=>{
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign(
+        const accessToken = jwt.sign(
             { id: user._id },
             jwtSecret,
             { expiresIn: '2h' }
         );
 
-        res.json({token});
+        res.json({accessToken});
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ message: 'Server error' });
@@ -123,15 +123,15 @@ router.post('/adminLogin', loginLimiter, async (req, res) => {
     const isAdminPasswordValid = await bcrypt.compare(password, hashedAdminPassword);
 
     if (email === process.env.ADMIN_EMAIL && isAdminPasswordValid) {
-      // Create JWT token with role info
-      const token = jwt.sign(
+      // Create JWT accessToken with role info
+      const accessToken = jwt.sign(
         { email: process.env.ADMIN_EMAIL, 
         role: 'admin' },
         jwtSecret,
         { expiresIn: '2h' }
       );
 
-      return res.json({ token });
+      return res.json({ accessToken });
     }
 
     // If credentials are invalid
@@ -162,13 +162,13 @@ router.get("/google/callback", passport.authenticate("google", { session: false 
   const user = req.user;
 
 
-  const token = jwt.sign(
+  const accessToken = jwt.sign(
     { id: user._id, name: user.name, email: user.email },
     jwtSecret,
     { expiresIn: "2h" }
   );
 
-  res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?token=${token}`);
+  res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?accessToken=${accessToken}`);
 });
 
 
