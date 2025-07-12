@@ -1,10 +1,26 @@
-const express =  require('express');
+/**
+ * @module controllers/orderController
+ * @description Controller for managing orders, including creation, retrieval, and status updates
+ * @requires express
+ * @requires ../models/cart
+ * @requires ../models/order
+ * @requires ../middleware/authMiddleware
+ */
+const express = require('express');
 const Cart = require('../models/cart');
 const Order = require('../models/order');
 
 const authMiddleware = require('../middleware/authMiddleware');
 const router = express.Router();
 
+/**
+ * @route POST /api/orders
+ * @description Create a new order from items in the user's cart
+ * @access Private
+ * @returns {Object} 200 - Order created successfully with order details
+ * @returns {Object} 404 - No items in cart
+ * @returns {Object} 500 - Server error
+ */
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const cartItems = await Cart.find({ userId: req.user.id });
@@ -26,7 +42,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const newOrder = new Order({
       userId: req.user.id,
-      status:"pending",
+      status: "pending",
       items: orderItems,
       totalAmount
     });
@@ -41,7 +57,13 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-
+/**
+ * @route GET /api/orders/user-order
+ * @description Get all orders for the authenticated user
+ * @access Private
+ * @returns {Array} 200 - Array of order objects
+ * @returns {Object} 500 - Server error
+ */
 router.get('/user-order', authMiddleware, async (req, res) => {
     try {
         const orders = await Order.find({ userId: req.user.id });
@@ -52,9 +74,14 @@ router.get('/user-order', authMiddleware, async (req, res) => {
     }
 });
 
-// Admin route to get all orders
-
-router.get('/all-orders',authMiddleware, async (req, res) => {
+/**
+ * @route GET /api/orders/all-orders
+ * @description Get all orders in the system (admin feature)
+ * @access Private
+ * @returns {Array} 200 - Array of all orders with user details
+ * @returns {Object} 500 - Server error
+ */
+router.get('/all-orders', authMiddleware, async (req, res) => {
   try {
     const orders = await Order.find().populate('userId', 'email name');
     return res.status(200).json(orders);
@@ -64,7 +91,15 @@ router.get('/all-orders',authMiddleware, async (req, res) => {
   }
 });
 
-
+/**
+ * @route DELETE /api/orders/:id
+ * @description Delete an order by ID
+ * @access Private
+ * @param {string} req.params.id - Order ID to delete
+ * @returns {Object} 200 - Success message
+ * @returns {Object} 404 - Order not found
+ * @returns {Object} 500 - Server error
+ */
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const order = await Order.findByIdAndDelete(req.params.id);
@@ -80,12 +115,24 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @route POST /api/orders/:id
+ * @description Update order status
+ * @access Private
+ * @param {string} req.params.id - Order ID to update
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.status - New order status ('pending', 'processing', 'completed', or 'cancelled')
+ * @returns {Object} 200 - Success message and updated order
+ * @returns {Object} 400 - Invalid or missing status
+ * @returns {Object} 404 - Order not found
+ * @returns {Object} 500 - Server error
+ */
 router.post('/:id', authMiddleware, async (req, res) => {
   try {
     const orderId = req.params.id;
     const { status } = req.body;
 
-    if (!status || !["pending", "processing", "completed","cancelled"].includes(status)) {
+    if (!status || !["pending", "processing", "completed", "cancelled"].includes(status)) {
       return res.status(400).json({ message: "Invalid or missing status" });
     }
 
