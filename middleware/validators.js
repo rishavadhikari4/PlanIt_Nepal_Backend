@@ -3,7 +3,7 @@
  * @description Input validation middleware functions using express-validator
  * @requires express-validator
  */
-const { body, param, validationResult } = require('express-validator');
+const { body, validationResult } = require('express-validator');
 
 /**
  * Common validation middleware to check results of validation chains
