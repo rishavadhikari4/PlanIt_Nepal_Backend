@@ -1,69 +1,87 @@
-/**
- * @module controllers/contactController
- * @description Controller for managing contact form submissions
- * @requires express
- * @requires ../models/Contact
- * @requires ../middleware/authMiddleware
- */
-const express = require("express");
 const Contact = require("../models/Contact");
-const authMiddleware = require("../middleware/authMiddleware");
 
-const router = express.Router();
-
-/**
- * @route POST /api/contact
- * @description Create a new contact form submission
- * @access Public
- * @param {Object} req.body - Request body
- * @param {string} req.body.name - Contact name
- * @param {string} req.body.email - Contact email
- * @param {string} req.body.phone - Contact phone number
- * @param {number} req.body.price - Budget/price information
- * @param {string} [req.body.message] - Optional message from contact
- * @returns {Object} 201 - Success message
- * @returns {Object} 400 - Missing required fields
- * @returns {Object} 500 - Server error
- */
-router.post("/", async(req,res)=>{
+exports.postForm = async (req,res)=>{
+    const {name,email,phone,subject,budget,message}= req.body;
     try{
-        const {name,email,phone,price,message} = req.body;
-        if(!name || !email || !phone || !price){
-            return res.status(400).json({message:"Please Fill all fields"});
+        if(!name || !email || !phone || !subject ||!budget || !message){
+            return res.status(400).json({
+            success:false,
+            message:"Please Fill All Fields"
+            });
         }
         const newContact = new Contact({
             name,
             email,
             phone,
-            price,
+            subject,
+            budget,
             message
         });
         await newContact.save();
-        return res.status(201).json({message:"Contact Created Successfully"});
-
-    }catch(err){
-        console.error(`Error creating contact:`, err);
-        return res.status(500).json({message:"Internal server error"});
+        return res.status(201).json({
+            success:true,
+            message:"Contact Created Successfully"
+        });
+    }catch(error){
+        console.error(error);
+        res.status(500).json({
+            success:false,
+            message:"Internal Server Error",
+        });
     }
-});
+    
+}
 
-/**
- * @route GET /api/contact
- * @description Get all contact form submissions
- * @access Private - Requires authentication
- * @returns {Object} 200 - Success message and array of contacts
- * @returns {Object} 401 - Unauthorized (handled by middleware)
- * @returns {Object} 500 - Server error
- */
-router.get("/",authMiddleware,async(req,res)=>{
-    try{
-        const contacts = await Contact.find();
-        return res.status(200).json({message:"Contacts fetched Successfully",contacts});
 
-    }catch(err){
-        console.error("Error fetching contacts:",err);
-        return res.status(500).json({message:"Internal server error"});
+exports.getContacts = async (req, res) => {
+  try {
+    const { subject, page = 1, limit = 10 } = req.query;
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    let filter = {};
+    if (subject) {
+      filter.subject = { $regex: subject, $options: "i" };
     }
-});
 
-module.exports = router;
+
+    const contacts = await Contact.find(filter)
+      .sort({ createdAt: -1 })  
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+
+    const total = await Contact.countDocuments(filter);
+
+    if (!contacts || contacts.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No contacts found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Contacts fetched successfully",
+      total,                         
+      page: pageNum,                 
+      pages: Math.ceil(total / limitNum),
+      contacts
+    });
+
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+
+
+
+

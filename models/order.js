@@ -1,20 +1,15 @@
-/**
- * @module models/order
- * @description MongoDB schema model for customer orders
- * @requires mongoose
- */
 const mongoose = require('mongoose');
 
-/**
- * Order item schema definition for individual items in an order
- * 
- * @typedef {Object} OrderItemSchema
- * @property {string} name - Name of the ordered item
- * @property {number} price - Price of the ordered item
- * @property {string} image - URL to the ordered item's image
- * @property {number} quantity - Quantity of the item ordered
- */
 const orderItemSchema = new mongoose.Schema({
+    itemId: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: true
+    },
+    itemType: {
+        type: String,
+        enum: ['venue', 'dish','studio'],
+        required: true
+    },
     name: { 
         type: String, 
         required: true 
@@ -30,19 +25,28 @@ const orderItemSchema = new mongoose.Schema({
     quantity: { 
         type: Number, 
         required: true 
+    },
+    bookedFrom: {
+        type: Date,
+        required: function() {
+            return this.itemType === 'venue' || this.itemType === 'studio';
+        }
+    },
+    bookedTill: {
+        type: Date,
+        required: function() {
+            return this.itemType === 'venue' || this.itemType === 'studio';
+        }
+    },
+    bookingStatus: {
+        type: String,
+        enum: ['pending', 'confirmed', 'cancelled'],
+        default: function() {
+            return (this.itemType === 'venue' || this.itemType === 'studio') ? 'confirmed' : undefined;
+        }
     }
 });
 
-/**
- * Order schema definition for complete customer orders
- * 
- * @typedef {Object} OrderSchema
- * @property {ObjectId} userId - Reference to the user who placed the order
- * @property {string} status - Current status of the order (e.g., "pending", "processing", "completed", "cancelled")
- * @property {Array<OrderItemSchema>} items - Array of ordered items
- * @property {number} totalAmount - Total cost of the entire order
- * @property {Date} createdAt - Timestamp when the order was created (defaults to current time)
- */
 const orderSchema = new mongoose.Schema({
   userId: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -51,12 +55,34 @@ const orderSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    required: true 
+    enum: ['draft', 'pending', 'processing', 'confirmed', 'completed', 'cancelled'],
+    default: 'draft' 
   },
-  items: [orderItemSchema], // Array of order items
+  items: [orderItemSchema], 
   totalAmount: {
     type: Number,
     required: true
+  },
+  paymentType: {
+    type: String,
+    enum: ['cash_after_service', 'advance_payment'],
+    default: 'cash_after_service'
+  },
+  paidAmount: {
+    type: Number,
+    default: 0
+  },
+  remainingAmount: {
+    type: Number,
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'partial', 'completed'],
+    default: 'pending'
+  },
+  stripePaymentIntentId: {
+    type: String,
+    default: null
   },
   createdAt: { 
     type: Date, 
@@ -64,8 +90,4 @@ const orderSchema = new mongoose.Schema({
   }
 });
 
-/**
- * Order model compiled from the schema
- * @type {Model}
- */
 module.exports = mongoose.model('Order', orderSchema);

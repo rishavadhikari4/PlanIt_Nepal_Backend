@@ -1,136 +1,214 @@
-/**
- * @module controllers/venueController
- * @description Handles all venue-related operations
- * @requires express
- * @requires ../models/Venue
- * @requires ../middleware/authMiddleware
- * @requires ../middleware/multer
- * @requires ../config/cloudinaryConfig
- */
-const express = require('express');
 const Venue = require('../models/Venue');
-const authMiddleware = require('../middleware/authMiddleware');
+const Order = require('../models/order');
 
-const upload = require('../middleware/multer');
 const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
 
-const router = express.Router();
-
-/**
- * @route POST /api/venues
- * @description Create a new venue with image upload
- * @access Private (Admin only)
- * @param {Object} req.body - Request body
- * @param {string} req.body.name - Venue name
- * @param {string} req.body.location - Venue location
- * @param {string} req.body.description - Venue description
- * @param {number} req.body.price - Venue price
- * @param {File} req.file - Venue image file
- * @returns {Object} 201 - Created venue object
- * @returns {Object} 400 - Missing required fields
- * @returns {Object} 500 - Server error
- */
-router.post('/', upload.single('image'), authMiddleware, async (req, res) => {
-    try {
-        const {name, location, description, price} = req.body;
-        if(!name || !location || !description || !req.file || !price) {
-            return res.status(400).json({message: 'Please fill all fields'});
+exports.uploadVenue = async (req,res) => {
+    const {name,location,description,capacity,price} =req.body;
+    try{
+        if(!name || !location || !description || !capacity || !req.file || !price){
+            return res.status(400).json({
+                success:false,
+                message:"Please Fill All Fileds"
+            });
         }
         const result = await uploadToCloudinary(req.file.buffer);
         const newVenue = new Venue({
             name,
             location,
             description,
+            capacity,
             price,
             image : result.secure_url,
-            imageId: result.public_id
+            imageId : result.public_id,
         });
         await newVenue.save();
-        return res.status(201).json({message: 'Venue created successfully', venue: newVenue});
-    } catch(err) {
-        console.error('Error creating venue:', err);
-        return res.status(500).json({message: 'Internal server error'});
-    }
-});
+        return res.status(201).json({
+            success:true,
+            message : "Venue Created Successfully",
+            venue : newVenue
 
-/**
- * @route GET /api/venues
- * @description Get all venues
- * @access Public
- * @returns {Object} 200 - Array of all venues
- * @returns {Object} 500 - Server error
- */
-router.get('/', async (req, res) => {
-    try {
-        const venues = await Venue.find();
-        return res.status(200).json({ message: 'Venues fetched successfully', venues });
-    } catch (err) {
-        console.error('Error fetching venues:', err);
-        return res.status(500).json({ message: 'Internal server error' });
+        });
+    }catch(error){
+        console.error('Error in uploadVenue:', error);
+        res.status(500).json({
+            success:false,
+            message:"Internal Server Error",
+        });
     }
-});
+    
+}
 
-/**
- * @route GET /api/venues/:id
- * @description Get a specific venue by ID
- * @access Public
- * @param {string} req.params.id - Venue ID
- * @returns {Object} 200 - Venue object
- * @returns {Object} 404 - Venue not found
- * @returns {Object} 500 - Server error
- */
-router.get('/:id', async (req, res) => {
+exports.getAllVenues = async (req, res) => {
     try {
-        const venue = await Venue.findById(req.params.id);
-        if (!venue) {
-            return res.status(404).json({ message: 'Venue not found' });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const sortField = req.query.sortField || 'createdAt';
+        const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+
+        const filter = {};
+
+        if (req.query.minPrice || req.query.maxPrice) {
+            filter.price = {};
+            if (req.query.minPrice) {
+                filter.price.$gte = parseFloat(req.query.minPrice);
+            }
+            if (req.query.maxPrice) {
+                filter.price.$lte = parseFloat(req.query.maxPrice);
+            }
         }
-        return res.status(200).json({ message: 'Venue fetched successfully', venue });
-    } catch (err) {
-        console.error('Error fetching venue:', err);
-        return res.status(500).json({ message: 'Internal server error' });
-    }
-});
 
-/**
- * @route PATCH /api/venues/:id
- * @description Update a venue by ID, including optional image update
- * @access Private (Admin only)
- * @param {string} req.params.id - Venue ID
- * @param {Object} req.body - Request body
- * @param {string} [req.body.name] - Updated venue name
- * @param {string} [req.body.location] - Updated venue location
- * @param {string} [req.body.description] - Updated venue description
- * @param {number} [req.body.price] - Updated venue price
- * @param {File} [req.file] - Updated venue image file
- * @returns {Object} 200 - Updated venue object
- * @returns {Object} 404 - Venue not found
- * @returns {Object} 500 - Server error
- */
-router.patch('/:id', upload.single('image'), authMiddleware, async (req, res) => {
-    const { name, location, description, price } = req.body;
+        if (req.query.location) {
+            filter.location = { $regex: req.query.location, $options: 'i' };
+        }
+
+        if (req.query.minCapacity || req.query.maxCapacity) {
+            filter.capacity = {};
+            if (req.query.minCapacity) {
+                filter.capacity.$gte = parseInt(req.query.minCapacity);
+            }
+            if (req.query.maxCapacity) {
+                filter.capacity.$lte = parseInt(req.query.maxCapacity);
+            }
+        }
+
+        if (req.query.name) {
+            filter.name = { $regex: req.query.name, $options: 'i' };
+        }
+
+        const venues = await Venue.find(filter)
+            .sort({ [sortField]: sortOrder })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        const totalVenues = await Venue.countDocuments(filter);
+
+        if (!venues || venues.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No venues found",
+                data: {
+                    venues: [],
+                    pagination: {
+                        totalVenues: 0,
+                        currentPage: page,
+                        totalPages: 0,
+                        limit
+                    }
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Venues fetched successfully",
+            data: {
+                venues,
+                pagination: {
+                    totalVenues,
+                    currentPage: page,
+                    totalPages: Math.ceil(totalVenues / limit),
+                    limit,
+                    hasNextPage: page < Math.ceil(totalVenues / limit),
+                    hasPrevPage: page > 1
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching venues:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+};
+
+exports.getVenuesById = async (req,res) => {
+    const venueId = req.params.venueId;
     try {
-        const venue = await Venue.findById(req.params.id);
+        // Find the venue
+        const venue = await Venue.findById(venueId).lean();
+        if (!venue) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'Venue not found' 
+            });
+        }
+
+        // Find all confirmed bookings for this venue
+        const orders = await Order.find({
+            'items.itemId': venueId,
+            'items.itemType': 'venue',
+            'items.bookingStatus': 'confirmed',
+            status: { $in: ['confirmed', 'processing', 'completed'] } // Only active orders
+        }).select('items status');
+
+        // Extract booked date ranges
+        const bookedDates = [];
+        orders.forEach(order => {
+            order.items.forEach(item => {
+                if (item.itemId.toString() === venueId && 
+                    item.itemType === 'venue' && 
+                    item.bookingStatus === 'confirmed') {
+                    bookedDates.push({
+                        bookedFrom: item.bookedFrom,
+                        bookedTill: item.bookedTill,
+                        orderId: order._id
+                    });
+                }
+            });
+        });
+
+        // Return venue with booked dates
+        return res.status(200).json({ 
+            success: true,
+            message: 'Venue fetched successfully',
+            data: {
+                venue: venue,
+                bookedDates: bookedDates,
+                totalBookings: bookedDates.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching venue with booking dates:', error);
+        return res.status(500).json({ 
+            success: false,
+            message: 'Internal server error' 
+        });
+    }
+}
+
+exports.updateVenue = async (req,res) => {
+    const { name, location, description, price } = req.body;
+    const venueId = req.params.venueId;
+    try {
+        const venue = await Venue.findById(venueId);
         if(!venue){
-            return res.status(404).json({message:"Venue not found"});
+            return res.status(404).json({
+                success:false,
+                message:"Venue not found"
+            });
         }
         
         let imageUrl = venue.image;
         let imageId = venue.imageId;
 
         if (req.file) {
-            // Delete old image if it exists
             if(venue.imageId){
                 await deleteFromCloudinary(venue.imageId);
             }
-            // Upload new image
             const result = await uploadToCloudinary(req.file.buffer);
             imageUrl = result.secure_url;
             imageId = result.public_id;
         }
         
         const updatedVenue = await Venue.findByIdAndUpdate(
-            req.params.id,
+            venueId,
             { 
                 $set: { 
                     name,
@@ -144,44 +222,146 @@ router.patch('/:id', upload.single('image'), authMiddleware, async (req, res) =>
             { new: true }
         );
         
-        return res.status(200).json({ message: 'Venue updated successfully', venue: updatedVenue });
+        return res.status(200).json({ 
+            success:true,
+            message: 'Venue updated successfully', 
+            venue: updatedVenue 
+        });
     } catch (err) {
         console.error('Error updating venue:', err);
-        return res.status(500).json({ message: 'Internal server error' });
+        res.status(500).json({ 
+            success:false,
+            message: 'Internal server error' 
+        });
     }
-});
+    
+}
 
-/**
- * @route DELETE /api/venues/:id
- * @description Delete a venue by ID, including associated image
- * @access Private (Admin only)
- * @param {string} req.params.id - Venue ID
- * @returns {Object} 200 - Success message
- * @returns {Object} 404 - Venue not found
- * @returns {Object} 500 - Server error
- */
-router.delete('/:id', authMiddleware, async (req, res) => {
-    try {
-        const venue = await Venue.findById(req.params.id);
-
+exports.deleteVenue = async (req,res) => {
+    const venueId = req.params.venueId;
+     try {
+        const venue = await Venue.findById(venueId);
         if(!venue){
-            return res.status(404).json({message:"Venue not found"});
+            return res.status(404).json({
+                success:false,
+                message:"Venue not found"
+            });
         }
 
-        // Delete image from Cloudinary if it exists
         if(venue.imageId){
             await deleteFromCloudinary(venue.imageId);
         }
 
-        // Delete venue from database
-        await Venue.findByIdAndDelete(req.params.id);
+        await Venue.findByIdAndDelete(venueId);
 
-        return res.status(200).json({ message: 'Venue deleted successfully' });
-    } catch (err) {
-        console.error('Error deleting venue:', err);
-        return res.status(500).json({ message: 'Internal server error' });
+        return res.status(200).json({ 
+            success:true,
+            message: 'Venue deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting venue:', error);
+        res.status(500).json({ 
+            success:false,
+            message: 'Internal server error' 
+        });
     }
-});
 
-module.exports = router;
+    
+}
+
+exports.searchVenues = async (req, res) => {
+    try {
+        const { q, minPrice, maxPrice, location, minCapacity, maxCapacity } = req.query;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        let filter = {};
+
+        if (q) {
+            filter.$or = [
+                { name: { $regex: q, $options: 'i' } },
+                { description: { $regex: q, $options: 'i' } },
+                { location: { $regex: q, $options: 'i' } }
+            ];
+        }
+
+        if (minPrice || maxPrice) {
+            filter.price = {};
+            if (minPrice) {
+                filter.price.$gte = parseFloat(minPrice);
+            }
+            if (maxPrice) {
+                filter.price.$lte = parseFloat(maxPrice);
+            }
+        }
+
+        if (minCapacity || maxCapacity) {
+            filter.capacity = {};
+            if (minCapacity) {
+                filter.capacity.$gte = parseInt(minCapacity);
+            }
+            if (maxCapacity) {
+                filter.capacity.$lte = parseInt(maxCapacity);
+            }
+        }
+
+        if (location) {
+            filter.location = { $regex: location, $options: 'i' };
+        }
+
+        const sortField = req.query.sortField || 'createdAt';
+        const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+
+        const venues = await Venue.find(filter)
+            .sort({ [sortField]: sortOrder })
+            .skip(skip)
+            .limit(limit)
+            .lean();
+
+        const totalVenues = await Venue.countDocuments(filter);
+
+        if (!venues || venues.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No venues found matching your search criteria",
+                data: {
+                    venues: [],
+                    pagination: {
+                        totalVenues: 0,
+                        currentPage: page,
+                        totalPages: 0,
+                        limit
+                    },
+                    searchQuery: { q, minPrice, maxPrice, location, minCapacity, maxCapacity }
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Venue search completed successfully",
+            data: {
+                venues,
+                pagination: {
+                    totalVenues,
+                    currentPage: page,
+                    totalPages: Math.ceil(totalVenues / limit),
+                    limit,
+                    hasNextPage: page < Math.ceil(totalVenues / limit),
+                    hasPrevPage: page > 1
+                },
+                searchQuery: { q, minPrice, maxPrice, location, minCapacity, maxCapacity }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error searching venues:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+}
+
 

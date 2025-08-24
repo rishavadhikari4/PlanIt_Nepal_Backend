@@ -1,89 +1,61 @@
-/**
- * @module server
- * @description Main server entry point that configures Express application
- * @requires express
- * @requires dotenv
- * @requires passport
- * @requires cors
- * @requires cookie-parser
- * @requires ./controllers/venueController
- * @requires ./controllers/decorationController
- * @requires ./controllers/dishController
- * @requires ./controllers/contactController
- * @requires ./controllers/authController
- * @requires ./controllers/cartController
- * @requires ./controllers/orderController
- * @requires ./controllers/passwordController
- * @requires ./controllers/reviewController
- * @requires ./config/dbConfig
- * @requires ./config/passportConfig
- */
 const express = require("express");
 const dotenv = require("dotenv");
 const passport = require("passport");
 const cors = require("cors");
 const cookieParser = require('cookie-parser');
 
-/**
- * Import route controllers
- */
-const venueController = require("./controllers/venueController");
-const decorationController = require("./controllers/decorationController");
-const dishController = require("./controllers/dishController");
-const contactController = require("./controllers/contactController");
-const authController = require("./controllers/authController");
-const cartController = require("./controllers/cartController");
-const orderController = require("./controllers/orderController");
-const passwordController = require("./controllers/passwordController");
-const reviewController = require("./controllers/reviewController");
-
-/**
- * Import database connection and passport configuration
- */
+const PORT = process.env.PORT || 5000;
 const connectDB = require('./config/dbConfig');
 require('./config/passportConfig');
 dotenv.config();
 
-/**
- * Initialize Express application and configure middleware
- */
+const routes = require('./routes/index');
+const { handleStripeWebhook } = require('./controllers/paymentController'); 
+
 const app = express();
+
+
+const isProduction = process.env.NODE_ENV === 'production';
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+app.post('/api/payments/webhook', express.raw({type: 'application/json'}), handleStripeWebhook);
+
 app.use(express.json());
-app.use(cors(
-    {
-        origin: process.env.FRONTEND_URL,
-        credentials:true
-    }
-));
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:8080',
+    credentials: true
+}));
 app.use(cookieParser());
 app.use(passport.initialize());
 app.set("trust proxy", 1);
 
-/**
- * Connect to MongoDB database
- */
 connectDB();
 
-/**
- * Configure API routes
- */
-app.use('/api/venues',venueController);
-app.use('/api/decorations',decorationController);
-app.use('/api/dishes',dishController);
-app.use('/api/contacts',contactController);
-app.use('/api/auth',authController);
-app.use('/api/cart',cartController);
-app.use('/api/orders',orderController);
-app.use('/api/password',passwordController);
-app.use('/api/review',reviewController);
+app.use('/api', routes);
 
-/**
- * Start server on specified port
- */
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-    console.log('Accessible on your network at http://192.168.1.73:' + PORT);
-});
+if (isProduction) {
+    app.listen(PORT, () => {
+        console.log(`Production server running on port ${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV}`);
+        console.log(`Server URL: ${process.env.FRONTEND_URL || 'Not configured'}`);
+        console.log(`MongoDB: Connected to production database`);
+        console.log(`Security: Production mode enabled`);
+    });
+} else if (isDevelopment) {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Development server running on http://localhost:${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`Network access: http://0.0.0.0:${PORT}`);
+        console.log(`Local access: http://localhost:${PORT}`);
+        console.log(`Network access: http://192.168.1.73:${PORT}`);
+        console.log(`Development features enabled`);
+        console.log(`API Routes: http://localhost:${PORT}/api`);
+    });
+} else {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT} (environment not specified)`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'not set'}`);
+        console.log(`Tip: Set NODE_ENV=production or NODE_ENV=development`);
+    });
+}
 
