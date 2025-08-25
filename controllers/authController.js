@@ -233,7 +233,7 @@ exports.googleCallback = async (req, res) => {
 
     setRefreshTokenCookie(res, refreshToken); 
 
-    res.redirect(`https://wedding-planner-frontend-delta.vercel.app/auth-success?accessToken=${accessToken}`);
+    res.redirect(`${process.env.FRONTEND_URL}/auth-success?accessToken=${accessToken}`);
   } catch (err) {
     console.error("Google OAuth callback error:", err);
     res.status(500).json({ message: "Internal server error" });
