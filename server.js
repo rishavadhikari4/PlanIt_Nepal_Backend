@@ -21,10 +21,23 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 app.post('/api/payments/webhook', express.raw({type: 'application/json'}), handleStripeWebhook);
 
 app.use(express.json());
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:8080",
+    process.env.PREVIEW_URL
+];
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:8080',
-    credentials: true
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
 }));
+
 app.use(cookieParser());
 app.use(passport.initialize());
 app.set("trust proxy", 1);
