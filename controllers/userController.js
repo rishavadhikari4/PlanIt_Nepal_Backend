@@ -108,7 +108,6 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-
 exports.deleteUserAccount = async (req, res) => {
     const userId = req.params.userId;
     try {
@@ -250,7 +249,6 @@ exports.deleteOwnAccount = async (req, res) => {
     }
 };
 
-// New functions for admin inspection
 exports.getUserForAdminInspection = async (req, res) => {
     const { userId } = req.params;
     const adminId = req.user.id;

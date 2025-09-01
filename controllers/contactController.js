@@ -1,6 +1,6 @@
 const Contact = require("../models/Contact");
 
-exports.postForm = async (req,res)=>{
+exports.postContactForm = async (req,res)=>{
     const {name,email,phone,subject,budget,message}= req.body;
     try{
         if(!name || !email || !phone || !subject ||!budget || !message){
@@ -33,7 +33,7 @@ exports.postForm = async (req,res)=>{
 }
 
 
-exports.getContacts = async (req, res) => {
+exports.getContactForms = async (req, res) => {
   try {
     const { subject, page = 1, limit = 10 } = req.query;
 
@@ -81,6 +81,59 @@ exports.getContacts = async (req, res) => {
   }
 };
 
+
+exports.getContactFormById = async (req,res) => {
+  const contactId = req.params.contactId;
+  try {
+    const contact = await Contact.findById(contactId).lean();
+    if(!contact){
+      res.status(404).json({
+        success:false,
+        message:"Contact Not Found",
+      });
+    }
+
+    res.status(200).json({
+      success:true,
+      message:"Contact form fetched SuccessFully",
+      data:{
+        contact,
+      }
+
+    });
+
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({
+      success:false,
+      message:"Internal Server Error",
+    });
+  }
+  
+};
+
+exports.deleteContactForm = async(req,res)=>{
+  const contactId = req.params.contactId;
+  try{
+    const contact = await Contact.findByIdAndDelete(contactId);
+    if(!contact){
+      res.status(404).json({
+        success:false,
+        message:"No Contacts Message Found"
+      });
+    }
+    res.status(200).json({
+      success:true,
+      message:"Contact Form Deleted SuccessFully"
+    });
+  }catch(error){
+    console.error(error.message);
+    res.status(500).json({
+      success:false,
+      message:"Internal Server Error"
+    });
+  }
+}
 
 
 

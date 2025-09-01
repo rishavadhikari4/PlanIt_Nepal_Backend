@@ -1,6 +1,4 @@
 const Review = require('../models/review');
-const User = require('../models/User');
-
 
 exports.postReviews = async (req, res) => {
   const userId = req.user.id;
@@ -85,7 +83,7 @@ exports.getVerifiedReviews = async (req, res) => {
     const limit = parseInt(req.query.limit) || 6;
 
     const reviews = await Review.find({ verified: true })
-      .populate('user', 'name profileImage') // Populate user data
+      .populate('user', 'name profileImage') 
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -127,7 +125,6 @@ exports.getUnverifiedReviews = async (req, res) => {
     });
   }
 };
-
 
 exports.deleteReview = async (req, res) => {
   const reviewId = req.params.id;

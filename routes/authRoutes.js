@@ -7,7 +7,7 @@ const {
   loginValidation,
 } = require('../middleware/validators');
 
-const {loginLimiter,registerLimiter} = require("../utils/rateLimitters");
+const {loginLimiter,registerLimiter, emailVerificationLimiter} = require("../utils/rateLimitters");
 const authMiddleware = require("../middleware/authMiddleware");
 const authorizeRoles = require("../middleware/authorizeRoles");
 
@@ -26,7 +26,7 @@ router.get('/google/callback', passport.authenticate("google", {session:false}),
 router.post('/refresh-token', authController.refreshAccessToken);
 
 // EMAIL VERIFICATION ROUTES (Specific routes before parameter routes)
-router.post('/verify/mail', authMiddleware, authorizeRoles("customer"), authController.sendVerificationMail);
+router.post('/verify/mail',emailVerificationLimiter, authMiddleware, authorizeRoles("customer"), authController.sendVerificationMail);
 router.patch('/verify/mail', authMiddleware, authorizeRoles("customer"), authController.verifyMail);
 
 // USER VERIFICATION ROUTES (Authenticated routes)

@@ -56,23 +56,10 @@ const forgotPasswordLimiter = rateLimit({
 // General API limiter - Balanced for normal usage
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 500,
     message: {
         success: false,
         message: 'Too many requests from this IP, please try again after 15 minutes.'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: false,
-});
-
-// Admin operations limiter - Strict for admin actions
-const adminLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 50,
-    message: {
-        success: false,
-        message: 'Too many admin requests from this IP, please try again later.'
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -108,7 +95,7 @@ const emailVerificationLimiter = rateLimit({
 // Search/read operations limiter - More lenient for browsing
 const readLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: 4000,
     message: {
         success: false,
         message: 'Too many search requests from this IP, please slow down.'
@@ -124,7 +111,6 @@ module.exports = {
     registerLimiter,
     forgotPasswordLimiter,
     generalLimiter,
-    adminLimiter,
     uploadLimiter,
     emailVerificationLimiter,
     readLimiter
