@@ -1,5 +1,16 @@
 const mongoose = require("mongoose");
 
+const imageSchema = new mongoose.Schema({
+  image: {
+    type:String,
+    default:null
+  },
+  imageId:{
+    type:String,
+    default:null
+  }
+})
+
 const venueSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -21,11 +32,12 @@ const venueSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  image: {
+  photos:[imageSchema],
+  venueImage: {
     type: String,
     required: true,
   },
-  imageId: {
+  venueImageId: {
     type: String
   }
 }, {timestamps: true});

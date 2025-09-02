@@ -19,8 +19,8 @@ exports.uploadVenue = async (req,res) => {
             description,
             capacity,
             price,
-            image : result.secure_url,
-            imageId : result.public_id,
+            venueImage : result.secure_url,
+            venueImageId : result.public_id,
         });
         await newVenue.save();
         return res.status(201).json({
@@ -195,12 +195,12 @@ exports.updateVenue = async (req,res) => {
             });
         }
         
-        let imageUrl = venue.image;
-        let imageId = venue.imageId;
+        let imageUrl = venue.venueImage;
+        let imageId = venue.venueImageId;
 
         if (req.file) {
-            if(venue.imageId){
-                await deleteFromCloudinary(venue.imageId);
+            if(venue.venueImageId){
+                await deleteFromCloudinary(venue.venueImageId);
             }
             const result = await uploadToCloudinary(req.file.buffer);
             imageUrl = result.secure_url;
@@ -215,8 +215,8 @@ exports.updateVenue = async (req,res) => {
                     location,
                     description,
                     price,
-                    image: imageUrl,
-                    imageId: imageId 
+                    venueImage: imageUrl,
+                    venueImageId: imageId 
                 } 
             },
             { new: true }
@@ -248,8 +248,8 @@ exports.deleteVenue = async (req,res) => {
             });
         }
 
-        if(venue.imageId){
-            await deleteFromCloudinary(venue.imageId);
+        if(venue.venueImageId){
+            await deleteFromCloudinary(venue.venueImageId);
         }
 
         await Venue.findByIdAndDelete(venueId);

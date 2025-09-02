@@ -374,11 +374,7 @@ exports.refreshAccessToken = async (req,res) => {
       success:false,
       message: 'Server error' });
   }
-}
-
-exports.checkRefreshToken = async (req,res)=>{
-  
-}
+};
 
 exports.logout = async (req, res) => {
   try {
@@ -404,7 +400,7 @@ exports.logout = async (req, res) => {
       message: 'Server error during logout' 
     });
   }
-}
+};
 
 
 

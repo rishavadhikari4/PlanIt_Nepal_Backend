@@ -195,7 +195,7 @@ exports.addOrder = async (req, res) => {
                 itemType: itemType,
                 name: item.name,
                 price: itemPrice,
-                image: item.image || item.studioImage,
+                image: item.venueImage || item.studioImage || item.image,
                 quantity: quantity
             };
 
@@ -254,7 +254,6 @@ exports.addOrder = async (req, res) => {
         });
     }
 };
-
 
 exports.userOrder = async (req, res) => {
   const userId = req.user.id;
