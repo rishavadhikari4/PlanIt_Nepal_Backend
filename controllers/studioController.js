@@ -291,13 +291,13 @@ exports.getStudioById = async (req, res) => {
 };
 
 exports.deleteStudio = async (req, res) => {
+    const { studioId } = req.params;
     try {
-        const { studioId } = req.params;
 
         if (!studioId) {
             return res.status(400).json({
                 success: false,
-                message: "Studio ID is required"
+                message: "Studio Id is required"
             });
         }
 

@@ -25,6 +25,8 @@ const generateAccessToken = (user, additionalData = {}, expiresIn = '2h') => {
 /**
  * Generate a refresh token for a user
  */
+
+// BUG: Refresh token cookie not being set/shown in production environment.
 const generateRefreshToken = (user, additionalData = {}, expiresIn = '7d') => {
   const userId = typeof user === 'object' ? user._id : user;
   const userRole = typeof user === 'object' ? user.role : user;
