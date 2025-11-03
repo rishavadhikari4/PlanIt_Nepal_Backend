@@ -8,7 +8,7 @@ const studioController = require("../controllers/studioController");
 const router = express.Router();
 
 
-router.post('/', authMiddleware, authorizeRoles('admin'), upload.single('image'), studioController.addStudio);
+router.post('/', authMiddleware, authorizeRoles('admin'), upload.single('image'), studioController.uploadStudio);
 
 
 router.get('/search', studioController.searchStudios);
@@ -19,6 +19,7 @@ router.patch('/:studioId', authMiddleware, authorizeRoles('admin'), upload.singl
 
 
 router.post('/:studioId/photos', authMiddleware, authorizeRoles('admin'), upload.array('photos', 10), studioController.addStudioPhotos);
+
 router.delete('/:studioId/photos/:photoId', authMiddleware, authorizeRoles('admin'), studioController.deleteStudioPhoto);
 
 

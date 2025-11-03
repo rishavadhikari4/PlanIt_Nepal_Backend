@@ -37,7 +37,65 @@ exports.uploadVenue = async (req,res) => {
         });
     }
     
-}
+};
+
+exports.addVenuePhotos = async (req, res) => {
+    try {
+        const venueId = req.params.venueId;
+        const files = req.files; 
+
+        if (!files || files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide at least one photo"
+            });
+        }
+        const venue = await Venue.findById(venueId);
+        if (!venue) {
+            return res.status(404).json({
+                success: false,
+                message: "Venue not found"
+            });
+        }
+
+        const uploadedPhotos = [];
+        for (const file of files) {
+            try {
+                const result = await uploadToCloudinary(file.buffer);
+                uploadedPhotos.push({
+                    image: result.secure_url,
+                    imageId: result.public_id
+                });
+            } catch (uploadError) {
+                console.error("Error uploading photo:", uploadError);
+            }
+        }
+
+        if (uploadedPhotos.length === 0) {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to upload any photos"
+            });
+        }
+
+        venue.photos.push(...uploadedPhotos);
+        await venue.save();
+
+        return res.status(200).json({
+            success: true,
+            message: `${uploadedPhotos.length} photos added successfully`,
+            venue: venue,
+            addedPhotos: uploadedPhotos
+        });
+
+    } catch (error) {
+        console.error("Error adding venue photos:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
 
 exports.getAllVenues = async (req, res) => {
     try {
@@ -236,14 +294,14 @@ exports.updateVenue = async (req,res) => {
     }
     
 }
-// TODO: Refactor to delete all photos in the venue's photos array, not just the main image.
+
 exports.deleteVenue = async (req,res) => {
-    const venueId = req.params.venueId;
+    const { venueId } = req.params.venueId;
      try {
         if(!venueId){
             return res.status(400).json({
                 success:false,
-                message:"Studio Id is required"
+                message:"Venue Id is required"
             });
         }
         const venue = await Venue.findById(venueId);
@@ -386,58 +444,47 @@ exports.searchVenues = async (req, res) => {
     }
 }
 
-// TODO: Implement functionality to allow uploading multiple photos for a venue
-exports.addVenuePhotos = async (req, res) => {
-    try {
-        const venueId = req.params.venueId;
-        const files = req.files; 
+// TODO: Implement functionality to delete only the photos associated with the venue, not the entire venue.
+exports.deleteVenuePhoto = async (req,res)=>{
+    try{
+        const {venueId,photoId} = req.params;
+        const venue = await Venue.findById(venueId);
 
-        if (!files || files.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide at least one photo"
-            });
-        }
-        const venue = await Studio.findById(venueId);
-        if (!venue) {
+        if(!venue){
             return res.status(404).json({
-                success: false,
-                message: "Venue not found"
+                success:false,
+                message:"Venue not found"
             });
         }
+        const photoIndex = venue.photos.findIndex(photo=>photo._id.toString() === photoId);
 
-        const uploadedPhotos = [];
-        for (const file of files) {
+        if(photoIndex === -1){
+            return res.status(404).json({
+                success:false,
+                message: "Photo Not Found"
+            });
+        }
+        
+        const photo = venue.photos[photoIndex];
+        
+        if (photo.imageId) {
             try {
-                const result = await uploadToCloudinary(file.buffer);
-                uploadedPhotos.push({
-                    image: result.secure_url,
-                    imageId: result.public_id
-                });
-            } catch (uploadError) {
-                console.error("Error uploading photo:", uploadError);
+                await deleteFromCloudinary(photo.imageId);
+            } catch (cloudinaryError) {
+                console.error("Error deleting photo from Cloudinary:", cloudinaryError);
             }
         }
-
-        if (uploadedPhotos.length === 0) {
-            return res.status(500).json({
-                success: false,
-                message: "Failed to upload any photos"
-            });
-        }
-
-        venue.photos.push(...uploadedPhotos);
+        venue.photos.splice(photoIndex,1);
         await venue.save();
 
         return res.status(200).json({
             success: true,
-            message: `${uploadedPhotos.length} photos added successfully`,
-            venue: venue,
-            addedPhotos: uploadedPhotos
+            message: "Photo deleted successfully",
+            venue: venue
         });
 
-    } catch (error) {
-        console.error("Error adding studio photos:", error.message);
+    }catch(error){
+        console.error("Error deleting Venue Photo:",error.message);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error"
@@ -445,4 +492,4 @@ exports.addVenuePhotos = async (req, res) => {
     }
 };
 
-// TODO: Implement functionality to delete only the photos associated with the venue, not the entire venue.
+

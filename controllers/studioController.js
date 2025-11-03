@@ -2,7 +2,7 @@ const Studio = require("../models/studio");
 const Order = require('../models/order');
 const {uploadToCloudinary,deleteFromCloudinary} = require("../config/cloudinaryConfig");
 
-exports.addStudio = async (req,res) => {
+exports.uploadStudio = async (req,res) => {
     const {name,location,description,price,services} = req.body;
     try{
         if(!name || !location || !description || !price){
@@ -216,7 +216,6 @@ exports.getAllStudios = async (req, res) => {
     }
 };
 
-
 exports.getStudioById = async (req, res) => {
     try {
         const { studioId } = req.params;
@@ -291,7 +290,7 @@ exports.getStudioById = async (req, res) => {
 };
 
 exports.deleteStudio = async (req, res) => {
-    const { studioId } = req.params;
+    const { studioId } = req.params.studioId;
     try {
 
         if (!studioId) {
@@ -455,7 +454,11 @@ exports.deleteStudioPhoto = async (req, res) => {
         const photo = studio.photos[photoIndex];
 
         if (photo.imageId) {
-            await deleteFromCloudinary(photo.imageId);
+            try {
+                await deleteFromCloudinary(photo.imageId);
+            } catch (cloudinaryError) {
+                console.error("Error deleting photo from Cloudinary:", cloudinaryError);
+            }
         }
 
         studio.photos.splice(photoIndex, 1);
