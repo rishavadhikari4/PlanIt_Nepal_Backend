@@ -78,7 +78,7 @@ exports.uploadStudio = async (req,res) => {
             message:"Internal Server Error",
         });
     }
-}
+};
 
 exports.addStudioPhotos = async (req, res) => {
     try {
@@ -290,7 +290,7 @@ exports.getStudioById = async (req, res) => {
 };
 
 exports.deleteStudio = async (req, res) => {
-    const { studioId } = req.params.studioId;
+    const { studioId } = req.params;
     try {
 
         if (!studioId) {
@@ -535,6 +535,172 @@ exports.searchStudios = async (req, res) => {
 
     } catch (error) {
         console.error("Error searching studios:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.rateStudio = async (req, res) => {
+    try {
+        const { studioId } = req.params;
+        const { rating } = req.body;
+        const userId = req.user.id;
+
+        if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+            return res.status(400).json({
+                success: false,
+                message: "Rating must be an integer between 1 and 5"
+            });
+        }
+
+        const studio = await Studio.findById(studioId);
+        if (!studio) {
+            return res.status(404).json({
+                success: false,
+                message: "Studio not found"
+            });
+        }
+
+        const existingRatingIndex = studio.ratings.findIndex(
+            r => r.userId.toString() === userId
+        );
+
+        let oldRating = null;
+        let isUpdate = false;
+
+        if (existingRatingIndex !== -1) {
+            oldRating = studio.ratings[existingRatingIndex].rating;
+            studio.ratings[existingRatingIndex].rating = rating;
+            studio.ratings[existingRatingIndex].ratedAt = new Date();
+            isUpdate = true;
+        } else {
+            studio.ratings.push({
+                userId: userId,
+                rating: rating
+            });
+            studio.totalRatings = studio.ratings.length;
+        }
+
+        const totalRating = studio.ratings.reduce((sum, r) => sum + r.rating, 0);
+        const averageRating = totalRating / studio.ratings.length;
+        studio.rating = Math.round(averageRating * 10) / 10;
+
+        await studio.save();
+
+        return res.status(200).json({
+            success: true,
+            message: isUpdate ? "Rating updated successfully" : "Rating added successfully",
+            data: {
+                studioId: studio._id,
+                userRating: rating,
+                oldRating: oldRating,
+                averageRating: studio.rating,
+                totalRatings: studio.totalRatings,
+                isUpdate: isUpdate
+            }
+        });
+
+    } catch (error) {
+        console.error("Error rating studio:", error.message);
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getStudioRating = async (req, res) => {
+    try {
+        const { studioId } = req.params;
+
+        const studio = await Studio.findById(studioId)
+            .populate('ratings.userId', 'name profileImage')
+            .select('name rating totalRatings ratings');
+
+        if (!studio) {
+            return res.status(404).json({
+                success: false,
+                message: "Studio not found"
+            });
+        }
+
+        // Calculate rating distribution
+        const ratingDistribution = {
+            5: 0, 4: 0, 3: 0, 2: 0, 1: 0
+        };
+
+        studio.ratings.forEach(r => {
+            ratingDistribution[r.rating]++;
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Studio rating fetched successfully",
+            data: {
+                studioId: studio._id,
+                studioName: studio.name,
+                averageRating: studio.rating,
+                totalRatings: studio.totalRatings,
+                ratingDistribution: ratingDistribution,
+                recentRatings: studio.ratings
+                    .sort((a, b) => new Date(b.ratedAt) - new Date(a.ratedAt))
+                    .slice(0, 10) // Show last 10 ratings
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching studio rating:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getUserStudioRating = async (req, res) => {
+    try {
+        const { studioId } = req.params;
+        const userId = req.user.id;
+
+        const studio = await Studio.findById(studioId);
+        if (!studio) {
+            return res.status(404).json({
+                success: false,
+                message: "Studio not found"
+            });
+        }
+
+        const userRating = studio.ratings.find(r => r.userId.toString() === userId);
+
+        if (!userRating) {
+            return res.status(404).json({
+                success: false,
+                message: "You haven't rated this studio yet",
+                data: {
+                    hasRated: false,
+                    studioAverageRating: studio.rating,
+                    totalRatings: studio.totalRatings
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User rating fetched successfully",
+            data: {
+                hasRated: true,
+                userRating: userRating.rating,
+                ratedAt: userRating.ratedAt,
+                studioAverageRating: studio.rating,
+                totalRatings: studio.totalRatings
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching user studio rating:", error.message);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error"

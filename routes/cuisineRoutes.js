@@ -15,6 +15,11 @@ router.get('/categories/:category/dishes', cuisineController.getDishesForACatego
 router.get('/dishes/:dishId', cuisineController.getDishbyId);
 router.get('/search', cuisineController.searchCuisines);
 
+// DISH RATING ROUTES
+router.post('/dishes/:dishId/rate', authMiddleware, authorizeRoles("customer"), cuisineController.rateDish);
+router.get('/dishes/:dishId/ratings', cuisineController.getDishRating);
+router.get('/dishes/:dishId/ratings/user', authMiddleware, authorizeRoles("customer"), cuisineController.getUserDishRating);
+
 // UPDATE ROUTES
 router.patch('/:categoryId/dishes/:dishId', authMiddleware, authorizeRoles("admin"), upload.single('image'), cuisineController.updateCuisine);
 

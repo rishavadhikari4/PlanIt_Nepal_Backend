@@ -52,6 +52,10 @@ exports.addOrder = async (req, res) => {
         const orderItems = [];
         let totalAmount = 0;
 
+        const studiosToUpdate = [];
+        const venuesToUpdate = [];
+        const dishesToUpdate = []; // Add dishes tracking
+
         for (const requestItem of items) {
             const { itemId, itemType, quantity, bookedFrom, bookedTill } = requestItem;
 
@@ -74,7 +78,6 @@ exports.addOrder = async (req, res) => {
                 const tillDate = new Date(bookedTill);
                 const currentDate = new Date();
 
-                // Normalize all dates (ignore time part)
                 fromDate.setHours(0,0,0,0);
                 tillDate.setHours(0,0,0,0);
                 currentDate.setHours(0,0,0,0);
@@ -139,6 +142,7 @@ exports.addOrder = async (req, res) => {
                         message: "Venue not found"
                     });
                 }
+                venuesToUpdate.push(itemId);
             } else if (itemType === 'studio') {
                 item = await Studio.findById(itemId);
                 if (!item) {
@@ -147,6 +151,7 @@ exports.addOrder = async (req, res) => {
                         message: "Studio not found"
                     });
                 }
+                studiosToUpdate.push(itemId);
             } else if (itemType === 'dish') {
                 const cuisine = await Cuisine.findOne({ 'dishes._id': itemId }, { 'dishes.$': 1 });
                 item = cuisine ? cuisine.dishes[0] : null;
@@ -157,6 +162,7 @@ exports.addOrder = async (req, res) => {
                         message: "Dish not found"
                     });
                 }
+                dishesToUpdate.push({ dishId: itemId, quantity: quantity });
             } else {
                 return res.status(400).json({
                     success: false,
@@ -231,6 +237,47 @@ exports.addOrder = async (req, res) => {
 
         const newOrder = new Order(orderData);
         await newOrder.save();
+
+        // Update venue order counts
+        if (venuesToUpdate.length > 0) {
+            try {
+                await Venue.updateMany(
+                    { _id: { $in: venuesToUpdate } },
+                    { $inc: { orderedCount: 1 } }
+                );
+                console.log(`Updated order count for ${venuesToUpdate.length} venue(s)`);
+            } catch (updateError) {
+                console.error("Error updating venue order counts:", updateError.message);
+            }
+        }
+
+        // Update studio order counts
+        if (studiosToUpdate.length > 0) {
+            try {
+                await Studio.updateMany(
+                    { _id: { $in: studiosToUpdate } },
+                    { $inc: { orderedCount: 1 } }
+                );
+                console.log(`Updated order count for ${studiosToUpdate.length} studio(s)`);
+            } catch (updateError) {
+                console.error("Error updating studio order counts:", updateError.message);
+            }
+        }
+
+        // Update dish order counts
+        if (dishesToUpdate.length > 0) {
+            try {
+                for (const dishUpdate of dishesToUpdate) {
+                    await Cuisine.updateOne(
+                        { 'dishes._id': dishUpdate.dishId },
+                        { $inc: { 'dishes.$.orderedCount': dishUpdate.quantity } }
+                    );
+                }
+                console.log(`Updated order count for ${dishesToUpdate.length} dish(es)`);
+            } catch (updateError) {
+                console.error("Error updating dish order counts:", updateError.message);
+            }
+        }
 
         const populatedOrder = await Order.findById(newOrder._id)
             .populate({
@@ -338,96 +385,317 @@ exports.getAllOrder = async (req, res) => {
 };
 
 exports.deleteOrder = async (req, res) => {
-  const orderId = req.params.orderId;
-  try {
-    const order = await Order.findByIdAndDelete(orderId);
+    const orderId = req.params.orderId;
+    try {
+        const order = await Order.findById(orderId);
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found"
-      });
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        if (order.status !== 'cancelled') {
+            const venueItems = order.items.filter(item => item.itemType === 'venue');
+            const studioItems = order.items.filter(item => item.itemType === 'studio');
+            const dishItems = order.items.filter(item => item.itemType === 'dish');
+            
+            const venueIds = venueItems.map(item => item.itemId);
+            const studioIds = studioItems.map(item => item.itemId);
+
+            // Decrease venue order counts
+            if (venueIds.length > 0) {
+                try {
+                    await Venue.updateMany(
+                        { _id: { $in: venueIds } },
+                        { $inc: { orderedCount: -1 } }
+                    );
+                    console.log(`Decreased order count for ${venueIds.length} venue(s) due to order deletion`);
+                } catch (updateError) {
+                    console.error("Error decreasing venue order counts:", updateError.message);
+                }
+            }
+
+            // Decrease studio order counts
+            if (studioIds.length > 0) {
+                try {
+                    await Studio.updateMany(
+                        { _id: { $in: studioIds } },
+                        { $inc: { orderedCount: -1 } }
+                    );
+                    console.log(`Decreased order count for ${studioIds.length} studio(s) due to order deletion`);
+                } catch (updateError) {
+                    console.error("Error decreasing studio order counts:", updateError.message);
+                }
+            }
+
+            // Decrease dish order counts
+            if (dishItems.length > 0) {
+                try {
+                    for (const dishItem of dishItems) {
+                        await Cuisine.updateOne(
+                            { 'dishes._id': dishItem.itemId },
+                            { $inc: { 'dishes.$.orderedCount': -dishItem.quantity } }
+                        );
+                    }
+                    console.log(`Decreased order count for ${dishItems.length} dish(es) due to order deletion`);
+                } catch (updateError) {
+                    console.error("Error decreasing dish order counts:", updateError.message);
+                }
+            }
+        }
+
+        await Order.findByIdAndDelete(orderId);
+
+        return res.status(200).json({
+            success: true,
+            message: "Order deleted successfully"
+        });
+    } catch (error) {
+        console.error("Error deleting order:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Order deleted successfully"
-    });
-  } catch (error) {
-    console.error("Error deleting order:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error"
-    });
-  }
 };
 
-exports.updateStatus = async (req,res) => {
-  const orderId = req.params.orderId;
-  const { status } = req.body;
+exports.updateStatus = async (req, res) => {
+    const orderId = req.params.orderId;
+    const { status } = req.body;
     try {
+        if (!status || !["pending", "processing", "completed", "cancelled", "confirmed"].includes(status)) {
+            return res.status(400).json({ 
+                success: false,
+                message: "Invalid or missing status" 
+            });
+        }
 
-    if (!status || !["pending", "processing", "completed", "cancelled", "confirmed"].includes(status)) {
-      return res.status(400).json({ 
-        success:false,
-        message: "Invalid or missing status" 
-      });
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ 
+                success: false,
+                message: "Order not found" 
+            });
+        }
+
+        const previousStatus = order.status;
+
+        const updatedOrder = await Order.findByIdAndUpdate(
+            orderId,
+            { status },
+            { new: true }
+        );
+
+        // Handle venue, studio, and dish order count changes when status changes to/from cancelled
+        if (previousStatus !== 'cancelled' && status === 'cancelled') {
+            // Order was cancelled - decrease counts
+            const venueItems = order.items.filter(item => item.itemType === 'venue');
+            const studioItems = order.items.filter(item => item.itemType === 'studio');
+            const dishItems = order.items.filter(item => item.itemType === 'dish');
+            
+            const venueIds = venueItems.map(item => item.itemId);
+            const studioIds = studioItems.map(item => item.itemId);
+            
+            if (venueIds.length > 0) {
+                try {
+                    await Venue.updateMany(
+                        { _id: { $in: venueIds } },
+                        { $inc: { orderedCount: -1 } }
+                    );
+                    console.log(`Decreased order count for ${venueIds.length} venue(s) due to cancellation`);
+                } catch (updateError) {
+                    console.error("Error decreasing venue order counts:", updateError.message);
+                }
+            }
+
+            if (studioIds.length > 0) {
+                try {
+                    await Studio.updateMany(
+                        { _id: { $in: studioIds } },
+                        { $inc: { orderedCount: -1 } }
+                    );
+                    console.log(`Decreased order count for ${studioIds.length} studio(s) due to cancellation`);
+                } catch (updateError) {
+                    console.error("Error decreasing studio order counts:", updateError.message);
+                }
+            }
+
+            // Decrease dish order counts
+            if (dishItems.length > 0) {
+                try {
+                    for (const dishItem of dishItems) {
+                        await Cuisine.updateOne(
+                            { 'dishes._id': dishItem.itemId },
+                            { $inc: { 'dishes.$.orderedCount': -dishItem.quantity } }
+                        );
+                    }
+                    console.log(`Decreased order count for ${dishItems.length} dish(es) due to cancellation`);
+                } catch (updateError) {
+                    console.error("Error decreasing dish order counts:", updateError.message);
+                }
+            }
+        } else if (previousStatus === 'cancelled' && status !== 'cancelled') {
+            // Order was un-cancelled - increase counts
+            const venueItems = order.items.filter(item => item.itemType === 'venue');
+            const studioItems = order.items.filter(item => item.itemType === 'studio');
+            const dishItems = order.items.filter(item => item.itemType === 'dish');
+            
+            const venueIds = venueItems.map(item => item.itemId);
+            const studioIds = studioItems.map(item => item.itemId);
+            
+            if (venueIds.length > 0) {
+                try {
+                    await Venue.updateMany(
+                        { _id: { $in: venueIds } },
+                        { $inc: { orderedCount: 1 } }
+                    );
+                    console.log(`Increased order count for ${venueIds.length} venue(s) due to un-cancellation`);
+                } catch (updateError) {
+                    console.error("Error increasing venue order counts:", updateError.message);
+                }
+            }
+
+            if (studioIds.length > 0) {
+                try {
+                    await Studio.updateMany(
+                        { _id: { $in: studioIds } },
+                        { $inc: { orderedCount: 1 } }
+                    );
+                    console.log(`Increased order count for ${studioIds.length} studio(s) due to un-cancellation`);
+                } catch (updateError) {
+                    console.error("Error increasing studio order counts:", updateError.message);
+                }
+            }
+
+            // Increase dish order counts
+            if (dishItems.length > 0) {
+                try {
+                    for (const dishItem of dishItems) {
+                        await Cuisine.updateOne(
+                            { 'dishes._id': dishItem.itemId },
+                            { $inc: { 'dishes.$.orderedCount': dishItem.quantity } }
+                        );
+                    }
+                    console.log(`Increased order count for ${dishItems.length} dish(es) due to un-cancellation`);
+                } catch (updateError) {
+                    console.error("Error increasing dish order counts:", updateError.message);
+                }
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Order status updated successfully",
+            order: updatedOrder
+        });
+
+    } catch (error) {
+        console.error("Error updating order status:", error.message);
+        return res.status(500).json({ 
+            success: false,
+            message: "Internal server error" 
+        });
     }
-
-    const updatedOrder = await Order.findByIdAndUpdate(
-      orderId,
-      { status },
-      { new: true }
-    );
-
-    if (!updatedOrder) {
-      return res.status(404).json({ 
-        success:false,
-        message: "Order not found" 
-      });
-    }
-
-    return res.status(200).json({
-      success:true,
-      message: "Order status updated successfully",
-      order: updatedOrder
-    });
-
-  } catch (error) {
-    console.error("Error updating order status:", error.message);
-    return res.status(500).json({ 
-      success:false,
-      message: "Internal server error" 
-    });
-  }
 }
 
 exports.deleteAllUserOrders = async (req, res) => {
-  const userId = req.params.userId;
-  try {
-    const userOrders = await Order.find({ userId: userId });
+    const userId = req.params.userId;
+    try {
+        const userOrders = await Order.find({ userId: userId });
 
-    if (!userOrders || userOrders.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No orders found for this user"
-      });
+        if (!userOrders || userOrders.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No orders found for this user"
+            });
+        }
+
+        const venueUpdates = {};
+        const studioUpdates = {};
+        const dishUpdates = {};
+        
+        userOrders.forEach(order => {
+            if (order.status !== 'cancelled') {
+                order.items.forEach(item => {
+                    if (item.itemType === 'venue') {
+                        if (venueUpdates[item.itemId]) {
+                            venueUpdates[item.itemId]++;
+                        } else {
+                            venueUpdates[item.itemId] = 1;
+                        }
+                    } else if (item.itemType === 'studio') {
+                        if (studioUpdates[item.itemId]) {
+                            studioUpdates[item.itemId]++;
+                        } else {
+                            studioUpdates[item.itemId] = 1;
+                        }
+                    } else if (item.itemType === 'dish') {
+                        if (dishUpdates[item.itemId]) {
+                            dishUpdates[item.itemId] += item.quantity;
+                        } else {
+                            dishUpdates[item.itemId] = item.quantity;
+                        }
+                    }
+                });
+            }
+        });
+
+        // Decrease venue order counts
+        for (const [venueId, count] of Object.entries(venueUpdates)) {
+            try {
+                await Venue.findByIdAndUpdate(venueId, {
+                    $inc: { orderedCount: -count }
+                });
+                console.log(`Decreased order count by ${count} for venue ${venueId}`);
+            } catch (updateError) {
+                console.error(`Error decreasing order count for venue ${venueId}:`, updateError.message);
+            }
+        }
+
+        // Decrease studio order counts
+        for (const [studioId, count] of Object.entries(studioUpdates)) {
+            try {
+                await Studio.findByIdAndUpdate(studioId, {
+                    $inc: { orderedCount: -count }
+                });
+                console.log(`Decreased order count by ${count} for studio ${studioId}`);
+            } catch (updateError) {
+                console.error(`Error decreasing order count for studio ${studioId}:`, updateError.message);
+            }
+        }
+
+        // Decrease dish order counts
+        for (const [dishId, count] of Object.entries(dishUpdates)) {
+            try {
+                await Cuisine.updateOne(
+                    { 'dishes._id': dishId },
+                    { $inc: { 'dishes.$.orderedCount': -count } }
+                );
+                console.log(`Decreased order count by ${count} for dish ${dishId}`);
+            } catch (updateError) {
+                console.error(`Error decreasing order count for dish ${dishId}:`, updateError.message);
+            }
+        }
+
+        const deleteResult = await Order.deleteMany({ userId: userId });
+
+        return res.status(200).json({
+            success: true,
+            message: `All orders deleted successfully for user`,
+            deletedCount: deleteResult.deletedCount,
+            venueUpdates: Object.keys(venueUpdates).length,
+            studioUpdates: Object.keys(studioUpdates).length,
+            dishUpdates: Object.keys(dishUpdates).length
+        });
+    } catch (error) {
+        console.error("Error deleting all user orders:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
     }
-
-    const deleteResult = await Order.deleteMany({ userId: userId });
-
-    return res.status(200).json({
-      success: true,
-      message: `All orders deleted successfully for user`,
-      deletedCount: deleteResult.deletedCount
-    });
-  } catch (error) {
-    console.error("Error deleting all user orders:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error"
-    });
-  }
 };
 
 exports.getOrderById = async (req, res) => {

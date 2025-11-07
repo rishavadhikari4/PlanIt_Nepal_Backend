@@ -292,7 +292,7 @@ exports.updateCuisine = async (req,res) => {
   }
 }
 
-exports.deleteDish = async (req,res) => {
+exports.deleteDish = async (req, res) => {
   const { categoryId, dishId } = req.params;
   try {
     const cuisine = await Cuisine.findById(categoryId);
@@ -311,24 +311,70 @@ exports.deleteDish = async (req,res) => {
       });
     }
 
-    if (dish.imageId) {
-      await deleteFromCloudinary(dish.imageId);
+    const dishImageId = dish.imageId;
+    const dishName = dish.name;
+    const categoryName = cuisine.category;
+
+    const isLastDish = cuisine.dishes.length === 1;
+
+    if (dishImageId) {
+      try {
+        await deleteFromCloudinary(dishImageId);
+      } catch (cloudinaryError) {
+        console.error("Error deleting dish image from Cloudinary:", cloudinaryError);
+      }
     }
 
-    dish.deleteOne();
-    await cuisine.save();
+    if (isLastDish) {
+      await Cuisine.findByIdAndDelete(categoryId);
+      
+      return res.status(200).json({
+        success: true,
+        message: "Last dish deleted. Category automatically removed.",
+        data: {
+          deletedDishId: dishId,
+          deletedDishName: dishName,
+          deletedCategoryId: categoryId,
+          deletedCategoryName: categoryName,
+          action: "category_deleted",
+          reason: "Last dish in category was deleted"
+        }
+      });
+    } else {
+      dish.deleteOne();
+      await cuisine.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Dish deleted successfully",
-      data: {
-        deletedDishId: dishId,
-        updatedCategory: cuisine
-      }
-    });
+      return res.status(200).json({
+        success: true,
+        message: "Dish deleted successfully",
+        data: {
+          deletedDishId: dishId,
+          deletedDishName: dishName,
+          categoryId: categoryId,
+          categoryName: categoryName,
+          remainingDishes: cuisine.dishes.length,
+          action: "dish_deleted",
+          updatedCategory: {
+            _id: cuisine._id,
+            category: cuisine.category,
+            dishes: cuisine.dishes,
+            totalDishes: cuisine.dishes.length
+          }
+        }
+      });
+    }
+
   } catch (error) {
-    console.error("Error deleting dish:", error);
-    res.status(500).json({ 
+    console.error("Error deleting dish:", error.message);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category ID or dish ID format"
+      });
+    }
+
+    return res.status(500).json({ 
       success: false,
       message: "Internal server error" 
     });
@@ -421,6 +467,197 @@ exports.searchCuisines = async (req, res) => {
       message: 'Internal server error'
     });
   }
+};
+
+exports.rateDish = async (req, res) => {
+    try {
+        const { dishId } = req.params;
+        const { rating } = req.body;
+        const userId = req.user.id;
+
+        if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+            return res.status(400).json({
+                success: false,
+                message: "Rating must be an integer between 1 and 5"
+            });
+        }
+
+        const cuisine = await Cuisine.findOne({ 'dishes._id': dishId });
+        if (!cuisine) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const dish = cuisine.dishes.id(dishId);
+        if (!dish) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const existingRatingIndex = dish.ratings.findIndex(
+            r => r.userId.toString() === userId
+        );
+
+        let oldRating = null;
+        let isUpdate = false;
+
+        if (existingRatingIndex !== -1) {
+            oldRating = dish.ratings[existingRatingIndex].rating;
+            dish.ratings[existingRatingIndex].rating = rating;
+            dish.ratings[existingRatingIndex].ratedAt = new Date();
+            isUpdate = true;
+        } else {
+            dish.ratings.push({
+                userId: userId,
+                rating: rating,
+                ratedAt: new Date()
+            });
+            dish.totalRatings += 1;
+        }
+
+        const totalRating = dish.ratings.reduce((sum, r) => sum + r.rating, 0);
+        const averageRating = totalRating / dish.ratings.length;
+        dish.rating = Math.round(averageRating * 10) / 10;
+
+        await cuisine.save();
+
+        return res.status(200).json({
+            success: true,
+            message: isUpdate ? "Rating updated successfully" : "Rating added successfully",
+            data: {
+                dishId: dish._id,
+                dishName: dish.name,
+                userRating: rating,
+                oldRating: oldRating,
+                averageRating: dish.rating,
+                totalRatings: dish.totalRatings,
+                isUpdate: isUpdate
+            }
+        });
+
+    } catch (error) {
+        console.error("Error rating dish:", error.message);
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getDishRating = async (req, res) => {
+    try {
+        const { dishId } = req.params;
+
+        const cuisine = await Cuisine.findOne({ 'dishes._id': dishId })
+            .populate('dishes.ratings.userId', 'name profileImage');
+
+        if (!cuisine) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const dish = cuisine.dishes.id(dishId);
+        if (!dish) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const ratingDistribution = {
+            5: 0, 4: 0, 3: 0, 2: 0, 1: 0
+        };
+
+        dish.ratings.forEach(r => {
+            ratingDistribution[r.rating]++;
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Dish rating fetched successfully",
+            data: {
+                dishId: dish._id,
+                dishName: dish.name,
+                averageRating: dish.rating,
+                totalRatings: dish.totalRatings,
+                ratingDistribution: ratingDistribution,
+                recentRatings: dish.ratings
+                    .sort((a, b) => new Date(b.ratedAt) - new Date(a.ratedAt))
+                    .slice(0, 10), 
+                categoryName: cuisine.category
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching dish rating:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getUserDishRating = async (req, res) => {
+    try {
+        const { dishId } = req.params;
+        const userId = req.user.id;
+
+        const cuisine = await Cuisine.findOne({ 'dishes._id': dishId });
+        if (!cuisine) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const dish = cuisine.dishes.id(dishId);
+        if (!dish) {
+            return res.status(404).json({
+                success: false,
+                message: "Dish not found"
+            });
+        }
+
+        const userRating = dish.ratings.find(r => r.userId.toString() === userId);
+
+        if (!userRating) {
+            return res.status(200).json({
+                success: true,
+                message: "User has not rated this dish yet",
+                data: {
+                    hasRated: false,
+                    dishAverageRating: dish.rating,
+                    totalRatings: dish.totalRatings
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User rating fetched successfully",
+            data: {
+                hasRated: true,
+                userRating: userRating.rating,
+                ratedAt: userRating.ratedAt,
+                dishAverageRating: dish.rating,
+                totalRatings: dish.totalRatings
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching user dish rating:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
 };
 
 

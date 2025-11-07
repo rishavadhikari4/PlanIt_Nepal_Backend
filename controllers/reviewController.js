@@ -127,7 +127,7 @@ exports.getUnverifiedReviews = async (req, res) => {
 };
 
 exports.deleteReview = async (req, res) => {
-  const reviewId = req.params.id;
+  const {reviewId} = req.params;
   try {
     const deletedReview = await Review.findByIdAndDelete(reviewId);
 

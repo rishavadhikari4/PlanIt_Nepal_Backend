@@ -3,40 +3,106 @@ const Order = require('../models/order');
 
 const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
 
-exports.uploadVenue = async (req,res) => {
-    const {name,location,description,capacity,price} =req.body;
-    try{
-        if(!name || !location || !description || !capacity || !req.file || !price){
+exports.uploadVenue = async (req, res) => {
+    const { name, location, description, capacity, price, services } = req.body;
+    try {
+        if (!name || !location || !description || !capacity || !price) {
             return res.status(400).json({
-                success:false,
-                message:"Please Fill All Fileds"
+                success: false,
+                message: "Fill all the fields"
             });
         }
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a venue image"
+            });
+        }
+
+        if (price <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Price must be a positive number"
+            });
+        }
+
+        // Parse services similar to studio
+        let parsedServices = [];
+        if (services) {
+            if (typeof services === 'string') {
+                try {
+                    parsedServices = JSON.parse(services);
+                } catch (error) {
+                    parsedServices = [services];
+                }
+            } else if (Array.isArray(services)) {
+                parsedServices = services;
+            }
+        }
+        
+        const validServices = [
+            'Indoor Hall', 
+            'Outdoor Garden', 
+            'Parking Available', 
+            'Catering Service', 
+            'Decoration Service', 
+            'Sound System', 
+            'Lighting System', 
+            'Air Conditioning', 
+            'Bridal Room', 
+            'Security Service',
+            'Valet Parking',
+            'Dance Floor',
+            'Stage Setup',
+            'Bar Service',
+            'Kitchen Facilities',
+            'Guest Accommodation',
+            'Wi-Fi Available',
+            'Photo Booth Area',
+            'Live Music Setup',
+            'DJ Service'
+        ];
+
+        if (parsedServices && Array.isArray(parsedServices)) {
+            const invalidServices = parsedServices.filter(service => !validServices.includes(service));
+            if (invalidServices.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid services: ${invalidServices.join(', ')}. Valid services are: ${validServices.join(', ')}`
+                });
+            }
+        }
+
         const result = await uploadToCloudinary(req.file.buffer);
+
         const newVenue = new Venue({
             name,
             location,
             description,
             capacity,
             price,
-            venueImage : result.secure_url,
-            venueImageId : result.public_id,
+            services: parsedServices || [],
+            venueImage: result.secure_url,
+            venueImageId: result.public_id,
+            photos: []
         });
-        await newVenue.save();
-        return res.status(201).json({
-            success:true,
-            message : "Venue Created Successfully",
-            venue : newVenue
 
+        await newVenue.save();
+
+        return res.status(201).json({
+            success: true,
+            message: "Venue Added Successfully",
+            venue: newVenue
         });
-    }catch(error){
-        console.error('Error in uploadVenue:', error);
+
+    } catch (error) {
+        console.error("Error Occurred", error.message);
         res.status(500).json({
-            success:false,
-            message:"Internal Server Error",
+            success: false,
+            message: "Internal Server Error",
         });
     }
-    
 };
 
 exports.addVenuePhotos = async (req, res) => {
@@ -106,7 +172,12 @@ exports.getAllVenues = async (req, res) => {
         const sortField = req.query.sortField || 'createdAt';
         const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
 
+        const serviceFilter = req.query.service;
         const filter = {};
+        
+        if (serviceFilter) {
+            filter.services = { $in: [serviceFilter] };
+        }
 
         if (req.query.minPrice || req.query.maxPrice) {
             filter.price = {};
@@ -122,18 +193,8 @@ exports.getAllVenues = async (req, res) => {
             filter.location = { $regex: req.query.location, $options: 'i' };
         }
 
-        if (req.query.minCapacity || req.query.maxCapacity) {
-            filter.capacity = {};
-            if (req.query.minCapacity) {
-                filter.capacity.$gte = parseInt(req.query.minCapacity);
-            }
-            if (req.query.maxCapacity) {
-                filter.capacity.$lte = parseInt(req.query.maxCapacity);
-            }
-        }
-
-        if (req.query.name) {
-            filter.name = { $regex: req.query.name, $options: 'i' };
+        if (req.query.capacity) {
+            filter.capacity = { $regex: req.query.capacity, $options: 'i' };
         }
 
         const venues = await Venue.find(filter)
@@ -162,7 +223,7 @@ exports.getAllVenues = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: "Venues fetched successfully",
+            message: "Venues retrieved successfully",
             data: {
                 venues,
                 pagination: {
@@ -177,10 +238,10 @@ exports.getAllVenues = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching venues:', error);
+        console.error("Error fetching venues:", error.message);
         return res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: "Internal Server Error"
         });
     }
 };
@@ -188,7 +249,6 @@ exports.getAllVenues = async (req, res) => {
 exports.getVenuesById = async (req,res) => {
     const venueId = req.params.venueId;
     try {
-        // Find the venue
         const venue = await Venue.findById(venueId).lean();
         if (!venue) {
             return res.status(404).json({ 
@@ -197,15 +257,13 @@ exports.getVenuesById = async (req,res) => {
             });
         }
 
-        // Find all confirmed bookings for this venue
         const orders = await Order.find({
             'items.itemId': venueId,
             'items.itemType': 'venue',
             'items.bookingStatus': 'confirmed',
-            status: { $in: ['confirmed', 'processing', 'completed'] } // Only active orders
+            status: { $in: ['confirmed', 'processing', 'completed'] }
         }).select('items status');
 
-        // Extract booked date ranges
         const bookedDates = [];
         orders.forEach(order => {
             order.items.forEach(item => {
@@ -221,7 +279,6 @@ exports.getVenuesById = async (req,res) => {
             });
         });
 
-        // Return venue with booked dates
         return res.status(200).json({ 
             success: true,
             message: 'Venue fetched successfully',
@@ -241,63 +298,111 @@ exports.getVenuesById = async (req,res) => {
     }
 }
 
-exports.updateVenue = async (req,res) => {
-    const { name, location, description, price } = req.body;
-    const venueId = req.params.venueId;
+exports.updateVenue = async (req, res) => {
     try {
+        const { venueId } = req.params;
+        const { name, location, description, capacity, price, services } = req.body;
+
         const venue = await Venue.findById(venueId);
-        if(!venue){
+        if (!venue) {
             return res.status(404).json({
-                success:false,
-                message:"Venue not found"
+                success: false,
+                message: "Venue not found"
             });
         }
-        
+
+        let parsedServices = venue.services;
+        if (services) {
+            if (typeof services === 'string') {
+                try {
+                    parsedServices = JSON.parse(services);
+                } catch (error) {
+                    parsedServices = [services];
+                }
+            } else if (Array.isArray(services)) {
+                parsedServices = services;
+            }
+        }
+
+        const validServices = [
+            'Indoor Hall', 
+            'Outdoor Garden', 
+            'Parking Available', 
+            'Catering Service', 
+            'Decoration Service', 
+            'Sound System', 
+            'Lighting System', 
+            'Air Conditioning', 
+            'Bridal Room', 
+            'Security Service',
+            'Valet Parking',
+            'Dance Floor',
+            'Stage Setup',
+            'Bar Service',
+            'Kitchen Facilities',
+            'Guest Accommodation',
+            'Wi-Fi Available',
+            'Photo Booth Area',
+            'Live Music Setup',
+            'DJ Service'
+        ];
+
+        if (parsedServices && Array.isArray(parsedServices)) {
+            const invalidServices = parsedServices.filter(service => !validServices.includes(service));
+            if (invalidServices.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid services: ${invalidServices.join(', ')}`
+                });
+            }
+        }
+
         let imageUrl = venue.venueImage;
         let imageId = venue.venueImageId;
 
         if (req.file) {
-            if(venue.venueImageId){
+            if (venue.venueImageId) {
                 await deleteFromCloudinary(venue.venueImageId);
             }
             const result = await uploadToCloudinary(req.file.buffer);
             imageUrl = result.secure_url;
             imageId = result.public_id;
         }
-        
+
         const updatedVenue = await Venue.findByIdAndUpdate(
             venueId,
-            { 
-                $set: { 
-                    name,
-                    location,
-                    description,
-                    price,
-                    venueImage: imageUrl,
-                    venueImageId: imageId 
-                } 
+            {
+                name: name || venue.name,
+                location: location || venue.location,
+                description: description || venue.description,
+                capacity: capacity || venue.capacity,
+                price: price || venue.price,
+                services: parsedServices,
+                venueImage: imageUrl,
+                venueImageId: imageId
             },
             { new: true }
         );
-        
-        return res.status(200).json({ 
-            success:true,
-            message: 'Venue updated successfully', 
-            venue: updatedVenue 
+
+        return res.status(200).json({
+            success: true,
+            message: "Venue updated successfully",
+            venue: updatedVenue
         });
-    } catch (err) {
-        console.error('Error updating venue:', err);
-        res.status(500).json({ 
-            success:false,
-            message: 'Internal server error' 
+
+    } catch (error) {
+        console.error("Error updating venue:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
         });
     }
-    
-}
+};
 
 exports.deleteVenue = async (req,res) => {
-    const { venueId } = req.params.venueId;
+    const { venueId } = req.params;
      try {
+        console.log(venueId)
         if(!venueId){
             return res.status(400).json({
                 success:false,
@@ -351,7 +456,7 @@ exports.deleteVenue = async (req,res) => {
 
 exports.searchVenues = async (req, res) => {
     try {
-        const { q, minPrice, maxPrice, location, minCapacity, maxCapacity } = req.query;
+        const { q, services, minPrice, maxPrice, location, capacity } = req.query;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
@@ -361,77 +466,49 @@ exports.searchVenues = async (req, res) => {
         if (q) {
             filter.$or = [
                 { name: { $regex: q, $options: 'i' } },
-                { description: { $regex: q, $options: 'i' } },
-                { location: { $regex: q, $options: 'i' } }
+                { description: { $regex: q, $options: 'i' } }
             ];
+        }
+
+        if (services) {
+            const serviceArray = services.split(',');
+            filter.services = { $in: serviceArray };
         }
 
         if (minPrice || maxPrice) {
             filter.price = {};
-            if (minPrice) {
-                filter.price.$gte = parseFloat(minPrice);
-            }
-            if (maxPrice) {
-                filter.price.$lte = parseFloat(maxPrice);
-            }
-        }
-
-        if (minCapacity || maxCapacity) {
-            filter.capacity = {};
-            if (minCapacity) {
-                filter.capacity.$gte = parseInt(minCapacity);
-            }
-            if (maxCapacity) {
-                filter.capacity.$lte = parseInt(maxCapacity);
-            }
+            if (minPrice) filter.price.$gte = parseFloat(minPrice);
+            if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
         }
 
         if (location) {
             filter.location = { $regex: location, $options: 'i' };
         }
 
-        const sortField = req.query.sortField || 'createdAt';
-        const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+        if (capacity) {
+            filter.capacity = { $regex: capacity, $options: 'i' };
+        }
 
         const venues = await Venue.find(filter)
-            .sort({ [sortField]: sortOrder })
+            .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
 
         const totalVenues = await Venue.countDocuments(filter);
 
-        if (!venues || venues.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "No venues found matching your search criteria",
-                data: {
-                    venues: [],
-                    pagination: {
-                        totalVenues: 0,
-                        currentPage: page,
-                        totalPages: 0,
-                        limit
-                    },
-                    searchQuery: { q, minPrice, maxPrice, location, minCapacity, maxCapacity }
-                }
-            });
-        }
-
         return res.status(200).json({
             success: true,
-            message: "Venue search completed successfully",
+            message: "Search completed successfully",
             data: {
                 venues,
                 pagination: {
                     totalVenues,
                     currentPage: page,
                     totalPages: Math.ceil(totalVenues / limit),
-                    limit,
-                    hasNextPage: page < Math.ceil(totalVenues / limit),
-                    hasPrevPage: page > 1
+                    limit
                 },
-                searchQuery: { q, minPrice, maxPrice, location, minCapacity, maxCapacity }
+                searchQuery: { q, services, minPrice, maxPrice, location, capacity }
             }
         });
 
@@ -439,12 +516,11 @@ exports.searchVenues = async (req, res) => {
         console.error("Error searching venues:", error.message);
         return res.status(500).json({
             success: false,
-            message: "Internal server error"
+            message: "Internal Server Error"
         });
     }
-}
+};
 
-// TODO: Implement functionality to delete only the photos associated with the venue, not the entire venue.
 exports.deleteVenuePhoto = async (req,res)=>{
     try{
         const {venueId,photoId} = req.params;
@@ -485,6 +561,172 @@ exports.deleteVenuePhoto = async (req,res)=>{
 
     }catch(error){
         console.error("Error deleting Venue Photo:",error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.rateVenue = async (req, res) => {
+    try {
+        const { venueId } = req.params;
+        const { rating } = req.body;
+        const userId = req.user.id;
+
+        if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+            return res.status(400).json({
+                success: false,
+                message: "Rating must be an integer between 1 and 5"
+            });
+        }
+
+        const venue = await Venue.findById(venueId);
+        if (!venue) {
+            return res.status(404).json({
+                success: false,
+                message: "Venue not found"
+            });
+        }
+
+        const existingRatingIndex = venue.ratings.findIndex(
+            r => r.userId.toString() === userId
+        );
+
+        let oldRating = null;
+        let isUpdate = false;
+
+        if (existingRatingIndex !== -1) {
+            oldRating = venue.ratings[existingRatingIndex].rating;
+            venue.ratings[existingRatingIndex].rating = rating;
+            venue.ratings[existingRatingIndex].ratedAt = new Date();
+            isUpdate = true;
+        } else {
+            venue.ratings.push({
+                userId: userId,
+                rating: rating
+            });
+            venue.totalRatings = venue.ratings.length;
+        }
+
+        const totalRating = venue.ratings.reduce((sum, r) => sum + r.rating, 0);
+        const averageRating = totalRating / venue.ratings.length;
+        venue.rating = Math.round(averageRating * 10) / 10;
+
+        await venue.save();
+
+        return res.status(200).json({
+            success: true,
+            message: isUpdate ? "Rating updated successfully" : "Rating added successfully",
+            data: {
+                venueId: venue._id,
+                userRating: rating,
+                oldRating: oldRating,
+                averageRating: venue.rating,
+                totalRatings: venue.totalRatings,
+                isUpdate: isUpdate
+            }
+        });
+
+    } catch (error) {
+        console.error("Error rating venue:", error.message);
+        
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getVenueRating = async (req, res) => {
+    try {
+        const { venueId } = req.params;
+
+        const venue = await Venue.findById(venueId)
+            .populate('ratings.userId', 'name profileImage')
+            .select('name rating totalRatings ratings');
+
+        if (!venue) {
+            return res.status(404).json({
+                success: false,
+                message: "Venue not found"
+            });
+        }
+
+        // Calculate rating distribution
+        const ratingDistribution = {
+            5: 0, 4: 0, 3: 0, 2: 0, 1: 0
+        };
+
+        venue.ratings.forEach(r => {
+            ratingDistribution[r.rating]++;
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Venue rating fetched successfully",
+            data: {
+                venueId: venue._id,
+                venueName: venue.name,
+                averageRating: venue.rating,
+                totalRatings: venue.totalRatings,
+                ratingDistribution: ratingDistribution,
+                recentRatings: venue.ratings
+                    .sort((a, b) => new Date(b.ratedAt) - new Date(a.ratedAt))
+                    .slice(0, 10) // Show last 10 ratings
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching venue rating:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
+
+exports.getUserVenueRating = async (req, res) => {
+    try {
+        const { venueId } = req.params;
+        const userId = req.user.id;
+
+        const venue = await Venue.findById(venueId);
+        if (!venue) {
+            return res.status(404).json({
+                success: false,
+                message: "Venue not found"
+            });
+        }
+
+        const userRating = venue.ratings.find(r => r.userId.toString() === userId);
+
+        if (!userRating) {
+            return res.status(404).json({
+                success: false,
+                message: "You haven't rated this venue yet",
+                data: {
+                    hasRated: false,
+                    venueAverageRating: venue.rating,
+                    totalRatings: venue.totalRatings
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "User rating fetched successfully",
+            data: {
+                hasRated: true,
+                userRating: userRating.rating,
+                ratedAt: userRating.ratedAt,
+                venueAverageRating: venue.rating,
+                totalRatings: venue.totalRatings
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching user venue rating:", error.message);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error"
