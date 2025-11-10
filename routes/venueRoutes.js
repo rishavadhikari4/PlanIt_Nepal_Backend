@@ -20,8 +20,6 @@ router.get('/:venueId', venueController.getVenuesById);
 
 // Rating routes (add these)
 router.post('/:venueId/rate', authMiddleware, venueController.rateVenue);
-router.get('/:venueId/ratings', venueController.getVenueRating);
-router.get('/:venueId/ratings/user', authMiddleware, venueController.getUserVenueRating);
 
 // Delete photo route
 router.delete('/:venueId/photos/:photoId', authMiddleware, authorizeRoles('admin'), venueController.deleteVenuePhoto);

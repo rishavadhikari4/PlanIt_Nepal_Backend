@@ -570,7 +570,7 @@ exports.deleteVenuePhoto = async (req,res)=>{
 
 exports.rateVenue = async (req, res) => {
     try {
-        const { venueId } = req.params;
+        const  {venueId}  = req.params;
         const { rating } = req.body;
         const userId = req.user.id;
 
@@ -580,7 +580,6 @@ exports.rateVenue = async (req, res) => {
                 message: "Rating must be an integer between 1 and 5"
             });
         }
-
         const venue = await Venue.findById(venueId);
         if (!venue) {
             return res.status(404).json({
@@ -638,100 +637,5 @@ exports.rateVenue = async (req, res) => {
     }
 };
 
-exports.getVenueRating = async (req, res) => {
-    try {
-        const { venueId } = req.params;
-
-        const venue = await Venue.findById(venueId)
-            .populate('ratings.userId', 'name profileImage')
-            .select('name rating totalRatings ratings');
-
-        if (!venue) {
-            return res.status(404).json({
-                success: false,
-                message: "Venue not found"
-            });
-        }
-
-        // Calculate rating distribution
-        const ratingDistribution = {
-            5: 0, 4: 0, 3: 0, 2: 0, 1: 0
-        };
-
-        venue.ratings.forEach(r => {
-            ratingDistribution[r.rating]++;
-        });
-
-        return res.status(200).json({
-            success: true,
-            message: "Venue rating fetched successfully",
-            data: {
-                venueId: venue._id,
-                venueName: venue.name,
-                averageRating: venue.rating,
-                totalRatings: venue.totalRatings,
-                ratingDistribution: ratingDistribution,
-                recentRatings: venue.ratings
-                    .sort((a, b) => new Date(b.ratedAt) - new Date(a.ratedAt))
-                    .slice(0, 10) // Show last 10 ratings
-            }
-        });
-
-    } catch (error) {
-        console.error("Error fetching venue rating:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
-    }
-};
-
-exports.getUserVenueRating = async (req, res) => {
-    try {
-        const { venueId } = req.params;
-        const userId = req.user.id;
-
-        const venue = await Venue.findById(venueId);
-        if (!venue) {
-            return res.status(404).json({
-                success: false,
-                message: "Venue not found"
-            });
-        }
-
-        const userRating = venue.ratings.find(r => r.userId.toString() === userId);
-
-        if (!userRating) {
-            return res.status(404).json({
-                success: false,
-                message: "You haven't rated this venue yet",
-                data: {
-                    hasRated: false,
-                    venueAverageRating: venue.rating,
-                    totalRatings: venue.totalRatings
-                }
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "User rating fetched successfully",
-            data: {
-                hasRated: true,
-                userRating: userRating.rating,
-                ratedAt: userRating.ratedAt,
-                venueAverageRating: venue.rating,
-                totalRatings: venue.totalRatings
-            }
-        });
-
-    } catch (error) {
-        console.error("Error fetching user venue rating:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
-    }
-};
 
 

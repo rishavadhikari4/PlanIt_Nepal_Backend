@@ -30,9 +30,5 @@ router.delete('/:studioId', authMiddleware, authorizeRoles('admin'), studioContr
 
 router.post('/:studioId/rate', authMiddleware, authorizeRoles('customer'), studioController.rateStudio);
 
-router.get('/:studioId/rating', studioController.getStudioRating);
-
-router.get('/:studioId/rating/me', authMiddleware, authorizeRoles('customer'), studioController.getUserStudioRating);
-
 
 module.exports = router;

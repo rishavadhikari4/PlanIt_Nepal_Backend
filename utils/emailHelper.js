@@ -212,7 +212,7 @@ const generateOrderEmailTemplate = (order, user, paymentAmountType) => {
         <html>
         <head>
             <meta charset="utf-8">
-            <title>Order Confirmation - Wedding Planner</title>
+            <title>Order Confirmation - PlanIt_Nepal</title>
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
@@ -292,7 +292,7 @@ const generateOrderEmailTemplate = (order, user, paymentAmountType) => {
 
                 <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
                     <p style="margin: 0; color: #6c757d; font-size: 14px;">
-                        Thank you for choosing Wedding Planner<br>
+                        Thank you for choosing PlanIt_Nepal<br>
                         Making your dreams come true, one celebration at a time ✨
                     </p>
                 </div>
@@ -311,10 +311,10 @@ const sendOrderConfirmationEmail = async (orderData, paymentAmountType = 'advanc
         const mailOptions = {
             from: process.env.USER_EMAIL,
             to: user.email,
-            subject: `🎉 Order Confirmed - Wedding Planner (Order #${order._id})`,
+            subject: `🎉 Order Confirmed - PlanIt_Nepal (Order #${order._id})`,
             html: generateOrderEmailTemplate(order, user, paymentAmountType),
             text: `
-Order Confirmation - Wedding Planner
+Order Confirmation - PlanIt_Nepal
 
 Hello ${user.name},
 
@@ -327,7 +327,7 @@ Order Details:
 - Remaining: $${order.remainingAmount}
 - Status: ${order.status}
 
-Thank you for choosing Wedding Planner!
+Thank you for choosing PlanIt_Nepal!
             `.trim()
         };
 
@@ -351,18 +351,18 @@ const sendPasswordResetEmail = async (email, resetToken) => {
         const mailOptions = {
             from: process.env.USER_EMAIL,
             to: email,
-            subject: '🔒 Reset Your Password - Wedding Planner',
+            subject: '🔒 Reset Your Password - PlanIt_Nepal',
             html: `
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
-                    <title>Reset Password - Wedding Planner</title>
+                    <title>Reset Password - PlanIt_Nepal</title>
                 </head>
                 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
                         <h1 style="margin: 0; font-size: 28px;">🔒 Password Reset</h1>
-                        <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Reset your Wedding Planner account password</p>
+                        <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Reset your PlanIt_Nepal account password</p>
                     </div>
                     
                     <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #dee2e6;">
@@ -393,7 +393,7 @@ const sendPasswordResetEmail = async (email, resetToken) => {
 
                         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
                             <p style="margin: 0; color: #6c757d; font-size: 14px;">
-                                Wedding Planner Security Team<br>
+                                PlanIt_Nepal Security Team<br>
                                 Making your account secure ✨
                             </p>
                         </div>
@@ -403,7 +403,7 @@ const sendPasswordResetEmail = async (email, resetToken) => {
             `,
             text: `Password Reset Request
 
-We received a request to reset your password for your Wedding Planner account.
+We received a request to reset your password for your PlanIt_Nepal account.
 
 Click the following link to reset your password: ${resetLink}
 
@@ -411,7 +411,7 @@ This link will expire in 1 hour for security reasons.
 
 If you didn't request this password reset, please ignore this email.
 
-Wedding Planner Security Team`
+PlanIt_Nepal Security Team`
         };
 
         const result = await transporter.sendMail(mailOptions);
@@ -432,25 +432,25 @@ const sendVerificationOTP = async (email, name, otpCode) => {
         const mailOptions = {
             from: process.env.USER_EMAIL,
             to: email,
-            subject: '🔐 Verify Your Email - Wedding Planner',
+            subject: '🔐 Verify Your Email - PlanIt_Nepal',
             html: `
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
-                    <title>Email Verification - Wedding Planner</title>
+                    <title>Email Verification - PlanIt_Nepal</title>
                 </head>
                 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
                         <h1 style="margin: 0; font-size: 28px;">🔐 Email Verification</h1>
-                        <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Verify your Wedding Planner account</p>
+                        <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Verify your PlanIt_Nepal account</p>
                     </div>
                     
                     <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #dee2e6;">
                         <h2 style="color: #495057; margin-top: 0;">Hello ${name},</h2>
                         
                         <p style="font-size: 16px; margin-bottom: 25px;">
-                            Welcome to Wedding Planner! Please verify your email address to complete your account setup.
+                            Welcome to PlanIt_Nepal! Please verify your email address to complete your account setup.
                         </p>
 
                         <div style="background: white; padding: 25px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #28a745; text-align: center;">
@@ -476,14 +476,14 @@ const sendVerificationOTP = async (email, name, otpCode) => {
                         <div style="background: #e9ecef; padding: 20px; border-radius: 8px; text-align: center;">
                             <h3 style="margin-top: 0; color: #495057;">🎊 What's Next?</h3>
                             <p style="margin-bottom: 0; font-size: 14px; color: #6c757d;">
-                                After verification, you'll have full access to all Wedding Planner features. 
+                                After verification, you'll have full access to all PlanIt_Nepal features. 
                                 Start planning your perfect wedding day! 💕
                             </p>
                         </div>
 
                         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
                             <p style="margin: 0; color: #6c757d; font-size: 14px;">
-                                Wedding Planner Team<br>
+                                PlanIt_Nepal Team<br>
                                 Welcome to the family ✨
                             </p>
                         </div>
@@ -491,11 +491,11 @@ const sendVerificationOTP = async (email, name, otpCode) => {
                 </body>
                 </html>
             `,
-            text: `Email Verification - Wedding Planner
+            text: `Email Verification - PlanIt_Nepal
 
 Hello ${name},
 
-Welcome to Wedding Planner! Please verify your email address to complete your account setup.
+Welcome to PlanIt_Nepal! Please verify your email address to complete your account setup.
 
 Your verification code: ${otpCode}
 
@@ -503,7 +503,7 @@ This code will expire in 1 hour for security reasons.
 
 If you didn't create this account, please ignore this email.
 
-Wedding Planner Team`
+PlanIt_Nepal Team`
         };
 
         const result = await transporter.sendMail(mailOptions);

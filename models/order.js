@@ -28,21 +28,19 @@ const orderItemSchema = new mongoose.Schema({
     },
     bookedFrom: {
         type: Date,
-        required: function() {
-            return this.itemType === 'venue' || this.itemType === 'studio';
-        }
+        required: false,
+        default: null
     },
     bookedTill: {
         type: Date,
-        required: function() {
-            return this.itemType === 'venue' || this.itemType === 'studio';
-        }
+        required: false,
+        default: null
     },
     bookingStatus: {
         type: String,
         enum: ['pending', 'confirmed', 'cancelled'],
         default: function() {
-            return (this.itemType === 'venue' || this.itemType === 'studio') ? 'confirmed' : undefined;
+            return (this.itemType === 'venue' || this.itemType === 'studio') ? 'pending' : undefined;
         }
     }
 });

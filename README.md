@@ -1,4 +1,4 @@
-# Wedding Planner Backend
+# PlanIt_Nepal Backend
 
 A comprehensive backend API for a wedding planning application that handles venues, decorations, catering, user management, and orders.
 

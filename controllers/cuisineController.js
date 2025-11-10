@@ -481,7 +481,7 @@ exports.rateDish = async (req, res) => {
                 message: "Rating must be an integer between 1 and 5"
             });
         }
-
+        console.log(dishId)
         const cuisine = await Cuisine.findOne({ 'dishes._id': dishId });
         if (!cuisine) {
             return res.status(404).json({
@@ -548,118 +548,6 @@ exports.rateDish = async (req, res) => {
         });
     }
 };
-
-exports.getDishRating = async (req, res) => {
-    try {
-        const { dishId } = req.params;
-
-        const cuisine = await Cuisine.findOne({ 'dishes._id': dishId })
-            .populate('dishes.ratings.userId', 'name profileImage');
-
-        if (!cuisine) {
-            return res.status(404).json({
-                success: false,
-                message: "Dish not found"
-            });
-        }
-
-        const dish = cuisine.dishes.id(dishId);
-        if (!dish) {
-            return res.status(404).json({
-                success: false,
-                message: "Dish not found"
-            });
-        }
-
-        const ratingDistribution = {
-            5: 0, 4: 0, 3: 0, 2: 0, 1: 0
-        };
-
-        dish.ratings.forEach(r => {
-            ratingDistribution[r.rating]++;
-        });
-
-        return res.status(200).json({
-            success: true,
-            message: "Dish rating fetched successfully",
-            data: {
-                dishId: dish._id,
-                dishName: dish.name,
-                averageRating: dish.rating,
-                totalRatings: dish.totalRatings,
-                ratingDistribution: ratingDistribution,
-                recentRatings: dish.ratings
-                    .sort((a, b) => new Date(b.ratedAt) - new Date(a.ratedAt))
-                    .slice(0, 10), 
-                categoryName: cuisine.category
-            }
-        });
-
-    } catch (error) {
-        console.error("Error fetching dish rating:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
-    }
-};
-
-exports.getUserDishRating = async (req, res) => {
-    try {
-        const { dishId } = req.params;
-        const userId = req.user.id;
-
-        const cuisine = await Cuisine.findOne({ 'dishes._id': dishId });
-        if (!cuisine) {
-            return res.status(404).json({
-                success: false,
-                message: "Dish not found"
-            });
-        }
-
-        const dish = cuisine.dishes.id(dishId);
-        if (!dish) {
-            return res.status(404).json({
-                success: false,
-                message: "Dish not found"
-            });
-        }
-
-        const userRating = dish.ratings.find(r => r.userId.toString() === userId);
-
-        if (!userRating) {
-            return res.status(200).json({
-                success: true,
-                message: "User has not rated this dish yet",
-                data: {
-                    hasRated: false,
-                    dishAverageRating: dish.rating,
-                    totalRatings: dish.totalRatings
-                }
-            });
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: "User rating fetched successfully",
-            data: {
-                hasRated: true,
-                userRating: userRating.rating,
-                ratedAt: userRating.ratedAt,
-                dishAverageRating: dish.rating,
-                totalRatings: dish.totalRatings
-            }
-        });
-
-    } catch (error) {
-        console.error("Error fetching user dish rating:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
-    }
-};
-
 
 
 

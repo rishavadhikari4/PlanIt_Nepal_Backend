@@ -66,68 +66,74 @@ exports.addOrder = async (req, res) => {
                 });
             }
 
+            // Optional booking date validation for venues and studios
             if (itemType === 'venue' || itemType === 'studio') {
-                if (!bookedFrom || !bookedTill) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `${itemType} booking requires bookedFrom and bookedTill dates`
+                // Only validate booking dates if they are provided
+                if (bookedFrom && bookedTill) {
+                    const fromDate = new Date(bookedFrom);
+                    const tillDate = new Date(bookedTill);
+                    const currentDate = new Date();
+
+                    fromDate.setHours(0,0,0,0);
+                    tillDate.setHours(0,0,0,0);
+                    currentDate.setHours(0,0,0,0);
+
+                    if (isNaN(fromDate.getTime()) || isNaN(tillDate.getTime())) {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Invalid date format"
+                        });
+                    }
+
+                    if (fromDate < currentDate) {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Booking start date cannot be in the past"
+                        });
+                    }
+
+                    if (tillDate < fromDate) {
+                        return res.status(400).json({
+                            success: false,
+                            message: "Booking end date cannot be before start date"
+                        });
+                    }
+
+                    // Check for conflicts only if dates are provided
+                    const conflictingOrders = await Order.find({
+                        'items.itemId': itemId,
+                        'items.itemType': itemType,
+                        'items.bookingStatus': 'confirmed',
+                        'items.bookedFrom': { $ne: null },
+                        'items.bookedTill': { $ne: null },
+                        status: { $ne: 'draft' },
+                        $or: [
+                            {
+                                'items.bookedFrom': { $lte: fromDate },
+                                'items.bookedTill': { $gt: fromDate }
+                            },
+                            {
+                                'items.bookedFrom': { $lt: tillDate },
+                                'items.bookedTill': { $gte: tillDate }
+                            },
+                            {
+                                'items.bookedFrom': { $gte: fromDate },
+                                'items.bookedTill': { $lte: tillDate }
+                            }
+                        ]
                     });
-                }
 
-                const fromDate = new Date(bookedFrom);
-                const tillDate = new Date(bookedTill);
-                const currentDate = new Date();
-
-                fromDate.setHours(0,0,0,0);
-                tillDate.setHours(0,0,0,0);
-                currentDate.setHours(0,0,0,0);
-
-                if (isNaN(fromDate.getTime()) || isNaN(tillDate.getTime())) {
+                    if (conflictingOrders.length > 0) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `${itemType} is not available for the selected dates`
+                        });
+                    }
+                } else if ((bookedFrom && !bookedTill) || (!bookedFrom && bookedTill)) {
+                    // If only one date is provided, return error
                     return res.status(400).json({
                         success: false,
-                        message: "Invalid date format"
-                    });
-                }
-
-                if (fromDate < currentDate) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Booking start date cannot be in the past"
-                    });
-                }
-
-                if (tillDate < fromDate) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Booking end date cannot be before start date"
-                    });
-                }
-
-                const conflictingOrders = await Order.find({
-                    'items.itemId': itemId,
-                    'items.itemType': itemType,
-                    'items.bookingStatus': 'confirmed',
-                    status: { $ne: 'draft' },
-                    $or: [
-                        {
-                            'items.bookedFrom': { $lte: fromDate },
-                            'items.bookedTill': { $gt: fromDate }
-                        },
-                        {
-                            'items.bookedFrom': { $lt: tillDate },
-                            'items.bookedTill': { $gte: tillDate }
-                        },
-                        {
-                            'items.bookedFrom': { $gte: fromDate },
-                            'items.bookedTill': { $lte: tillDate }
-                        }
-                    ]
-                });
-
-                if (conflictingOrders.length > 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: `${itemType} is not available for the selected dates`
+                        message: "Both bookedFrom and bookedTill dates must be provided together, or both can be omitted"
                     });
                 }
             }
@@ -205,9 +211,11 @@ exports.addOrder = async (req, res) => {
                 quantity: quantity
             };
 
+            // Add booking information only for venues and studios
             if (itemType === 'venue' || itemType === 'studio') {
-                orderItem.bookedFrom = new Date(bookedFrom);
-                orderItem.bookedTill = new Date(bookedTill);
+                // Set booking dates to null if not provided, otherwise use the provided dates
+                orderItem.bookedFrom = bookedFrom ? new Date(bookedFrom) : null;
+                orderItem.bookedTill = bookedTill ? new Date(bookedTill) : null;
                 orderItem.bookingStatus = 'pending';
             }
 
@@ -482,9 +490,27 @@ exports.updateStatus = async (req, res) => {
 
         const previousStatus = order.status;
 
+        // Prepare update object
+        let updateData = { status };
+
+        // **AUTOMATIC PAYMENT COMPLETION WHEN ORDER IS COMPLETED**
+        if (status === 'completed') {
+            updateData.paymentStatus = 'completed';
+            updateData.paidAmount = order.totalAmount;
+            updateData.remainingAmount = 0;
+            
+            console.log(`Order ${orderId} completed - Auto-updating payment:`, {
+                totalAmount: order.totalAmount,
+                previousPaidAmount: order.paidAmount,
+                newPaidAmount: order.totalAmount,
+                previousRemainingAmount: order.remainingAmount,
+                newRemainingAmount: 0
+            });
+        }
+
         const updatedOrder = await Order.findByIdAndUpdate(
             orderId,
-            { status },
+            updateData,
             { new: true }
         );
 
@@ -585,10 +611,22 @@ exports.updateStatus = async (req, res) => {
             }
         }
 
+        // Enhanced response with payment info when status is completed
+        let responseMessage = "Order status updated successfully";
+        if (status === 'completed') {
+            responseMessage = "Order completed successfully. Payment marked as completed.";
+        }
+
         return res.status(200).json({
             success: true,
-            message: "Order status updated successfully",
-            order: updatedOrder
+            message: responseMessage,
+            order: updatedOrder,
+            paymentUpdate: status === 'completed' ? {
+                paymentStatus: 'completed',
+                paidAmount: updatedOrder.paidAmount,
+                remainingAmount: updatedOrder.remainingAmount,
+                totalAmount: updatedOrder.totalAmount
+            } : null
         });
 
     } catch (error) {

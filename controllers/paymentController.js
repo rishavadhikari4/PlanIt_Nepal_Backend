@@ -95,7 +95,7 @@ exports.startPayment = async (req, res) => {
                 price_data: {
                     currency: 'usd',
                     product_data: {
-                        name: `Wedding Planner Order - ${order._id}`,
+                        name: `PlanIt_Nepal Order - ${order._id}`,
                         description: `Payment for order containing ${order.items.length} items${paymentAmount === '25_percent' ? ' (25% Advance Payment)' : ' (Full Payment)'}`,
                     },
                     unit_amount: amount,
