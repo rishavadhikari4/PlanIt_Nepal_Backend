@@ -76,8 +76,6 @@ const studioSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-studioRatingSchema.index({ userId: 1 }, { unique: true });
-
 const Studio = mongoose.model("Studio", studioSchema);
 
 module.exports = Studio;

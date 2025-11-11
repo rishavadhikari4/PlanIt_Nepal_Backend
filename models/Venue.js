@@ -75,9 +75,6 @@ const venueSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// Index to ensure one rating per user per venue
-venueRatingSchema.index({ userId: 1 }, { unique: true });
-
 const Venue = mongoose.model("Venue", venueSchema);
 
 module.exports = Venue;

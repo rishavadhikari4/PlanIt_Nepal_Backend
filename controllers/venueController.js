@@ -1,6 +1,7 @@
 const Venue = require('../models/Venue');
 const Order = require('../models/order');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinaryConfig');
+const mongoose = require('mongoose');
 
 exports.uploadVenue = async (req, res) => {
     const { name, location, description, capacity, price } = req.body;
@@ -27,7 +28,8 @@ exports.uploadVenue = async (req, res) => {
         });
         await newVenue.save();
         return res.status(201).json({ success: true, message: "Venue Added Successfully", venue: newVenue });
-    } catch {
+    } catch(error) {
+        console.log(error)
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -315,30 +317,56 @@ exports.rateVenue = async (req, res) => {
     try {
         const { venueId } = req.params;
         const { rating } = req.body;
-        const userId = req.user.id;
+        const userId = req.user?.id;
+
+        // Validation
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "User authentication required" });
+        }
+
         if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
             return res.status(400).json({ success: false, message: "Rating must be an integer between 1 and 5" });
         }
+
+        if (!mongoose.Types.ObjectId.isValid(venueId)) {
+            return res.status(400).json({ success: false, message: "Invalid venue ID" });
+        }
+
+        // Find venue
         const venue = await Venue.findById(venueId);
         if (!venue) {
             return res.status(404).json({ success: false, message: "Venue not found" });
         }
+
+        // Check if user has already rated this venue
         const existingRatingIndex = venue.ratings.findIndex(r => r.userId.toString() === userId);
         let oldRating = null;
         let isUpdate = false;
+
         if (existingRatingIndex !== -1) {
+            // Update existing rating
             oldRating = venue.ratings[existingRatingIndex].rating;
             venue.ratings[existingRatingIndex].rating = rating;
             venue.ratings[existingRatingIndex].ratedAt = new Date();
             isUpdate = true;
         } else {
-            venue.ratings.push({ userId, rating });
-            venue.totalRatings = venue.ratings.length;
+            // Add new rating
+            venue.ratings.push({
+                userId: new mongoose.Types.ObjectId(userId),
+                rating: rating,
+                ratedAt: new Date()
+            });
         }
+
+        // Recalculate venue average rating and total
         const totalRating = venue.ratings.reduce((sum, r) => sum + r.rating, 0);
-        const averageRating = totalRating / venue.ratings.length;
+        const averageRating = venue.ratings.length > 0 ? totalRating / venue.ratings.length : 0;
         venue.rating = Math.round(averageRating * 10) / 10;
+        venue.totalRatings = venue.ratings.length;
+
+        // Save venue
         await venue.save();
+
         return res.status(200).json({
             success: true,
             message: isUpdate ? "Rating updated successfully" : "Rating added successfully",
@@ -351,7 +379,50 @@ exports.rateVenue = async (req, res) => {
                 isUpdate
             }
         });
-    } catch {
+
+    } catch (error) {
+        console.error("Rating error:", error);
+
+        // Handle MongoDB duplicate key error
+        if (error.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: "You have already rated this venue. Rating conflict detected."
+            });
+        }
+
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+// Add a helper function to get user's rating for a venue
+exports.getUserRatingForVenue = async (req, res) => {
+    try {
+        const { venueId } = req.params;
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "User authentication required" });
+        }
+
+        const venue = await Venue.findById(venueId).lean();
+        if (!venue) {
+            return res.status(404).json({ success: false, message: "Venue not found" });
+        }
+
+        const userRating = venue.ratings.find(r => r.userId.toString() === userId);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                hasRated: !!userRating,
+                rating: userRating ? userRating.rating : null,
+                ratedAt: userRating ? userRating.ratedAt : null
+            }
+        });
+
+    } catch (error) {
+        console.error("Get user rating error:", error);
         return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
