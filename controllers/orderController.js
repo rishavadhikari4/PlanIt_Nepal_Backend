@@ -4,310 +4,247 @@ const Cuisine = require('../models/Cuisine');
 const Studio = require('../models/studio');
 
 exports.addOrder = async (req, res) => {
-    try {
-        const { items } = req.body;
-        const userId = req.user.id;
-        console.log("Order is being created");
+  try {
+    const { items } = req.body;
+    const userId = req.user.id;
 
-        if (req.user.role === 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: "Admins are not allowed to place orders"
-            });
-        }
-
-        if (!items || !Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide items to order"
-            });
-        }
-
-        const venueItems = items.filter(item => item.itemType === 'venue');
-        if (venueItems.length > 1) {
-            return res.status(400).json({
-                success: false,
-                message: "You can only order one venue per order"
-            });
-        }
-
-        const studioItems = items.filter(item => item.itemType === 'studio');
-        if (studioItems.length > 1) {
-            return res.status(400).json({
-                success: false,
-                message: "You can only order one studio per order"
-            });
-        }
-
-        const dishItems = items.filter(item => item.itemType === 'dish');
-        const dishIds = dishItems.map(item => item.itemId);
-        const uniqueDishIds = [...new Set(dishIds)];
-        if (dishIds.length !== uniqueDishIds.length) {
-            return res.status(400).json({
-                success: false,
-                message: "Cannot add duplicate dishes to the same order"
-            });
-        }
-
-        const orderItems = [];
-        let totalAmount = 0;
-
-        const studiosToUpdate = [];
-        const venuesToUpdate = [];
-        const dishesToUpdate = []; // Add dishes tracking
-
-        for (const requestItem of items) {
-            const { itemId, itemType, quantity, bookedFrom, bookedTill } = requestItem;
-
-            if (!itemId || !itemType || !quantity) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Each item must have itemId, itemType, and quantity"
-                });
-            }
-
-            // Optional booking date validation for venues and studios
-            if (itemType === 'venue' || itemType === 'studio') {
-                // Only validate booking dates if they are provided
-                if (bookedFrom && bookedTill) {
-                    const fromDate = new Date(bookedFrom);
-                    const tillDate = new Date(bookedTill);
-                    const currentDate = new Date();
-
-                    fromDate.setHours(0,0,0,0);
-                    tillDate.setHours(0,0,0,0);
-                    currentDate.setHours(0,0,0,0);
-
-                    if (isNaN(fromDate.getTime()) || isNaN(tillDate.getTime())) {
-                        return res.status(400).json({
-                            success: false,
-                            message: "Invalid date format"
-                        });
-                    }
-
-                    if (fromDate < currentDate) {
-                        return res.status(400).json({
-                            success: false,
-                            message: "Booking start date cannot be in the past"
-                        });
-                    }
-
-                    if (tillDate < fromDate) {
-                        return res.status(400).json({
-                            success: false,
-                            message: "Booking end date cannot be before start date"
-                        });
-                    }
-
-                    // Check for conflicts only if dates are provided
-                    const conflictingOrders = await Order.find({
-                        'items.itemId': itemId,
-                        'items.itemType': itemType,
-                        'items.bookingStatus': 'confirmed',
-                        'items.bookedFrom': { $ne: null },
-                        'items.bookedTill': { $ne: null },
-                        status: { $ne: 'draft' },
-                        $or: [
-                            {
-                                'items.bookedFrom': { $lte: fromDate },
-                                'items.bookedTill': { $gt: fromDate }
-                            },
-                            {
-                                'items.bookedFrom': { $lt: tillDate },
-                                'items.bookedTill': { $gte: tillDate }
-                            },
-                            {
-                                'items.bookedFrom': { $gte: fromDate },
-                                'items.bookedTill': { $lte: tillDate }
-                            }
-                        ]
-                    });
-
-                    if (conflictingOrders.length > 0) {
-                        return res.status(400).json({
-                            success: false,
-                            message: `${itemType} is not available for the selected dates`
-                        });
-                    }
-                } else if ((bookedFrom && !bookedTill) || (!bookedFrom && bookedTill)) {
-                    // If only one date is provided, return error
-                    return res.status(400).json({
-                        success: false,
-                        message: "Both bookedFrom and bookedTill dates must be provided together, or both can be omitted"
-                    });
-                }
-            }
-
-            let item;
-
-            if (itemType === 'venue') {
-                item = await Venue.findById(itemId);
-                if (!item) {
-                    return res.status(404).json({
-                        success: false,
-                        message: "Venue not found"
-                    });
-                }
-                venuesToUpdate.push(itemId);
-            } else if (itemType === 'studio') {
-                item = await Studio.findById(itemId);
-                if (!item) {
-                    return res.status(404).json({
-                        success: false,
-                        message: "Studio not found"
-                    });
-                }
-                studiosToUpdate.push(itemId);
-            } else if (itemType === 'dish') {
-                const cuisine = await Cuisine.findOne({ 'dishes._id': itemId }, { 'dishes.$': 1 });
-                item = cuisine ? cuisine.dishes[0] : null;
-
-                if (!item) {
-                    return res.status(404).json({
-                        success: false,
-                        message: "Dish not found"
-                    });
-                }
-                dishesToUpdate.push({ dishId: itemId, quantity: quantity });
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid itemType (must be 'venue', 'studio', or 'dish')"
-                });
-            }
-
-            if (!item.price && item.price !== 0) {
-                console.error(`Item missing price:`, {
-                    itemId,
-                    itemType,
-                    item: item
-                });
-                return res.status(400).json({
-                    success: false,
-                    message: `${itemType} is missing price information`
-                });
-            }
-
-            const itemPrice = parseFloat(item.price);
-            if (isNaN(itemPrice)) {
-                console.error(`Invalid price for item:`, {
-                    itemId,
-                    itemType,
-                    originalPrice: item.price,
-                    parsedPrice: itemPrice
-                });
-                return res.status(400).json({
-                    success: false,
-                    message: `${itemType} has invalid price format`
-                });
-            }
-
-            const orderItem = {
-                itemId: item._id,
-                itemType: itemType,
-                name: item.name,
-                price: itemPrice,
-                image: item.venueImage || item.studioImage || item.image,
-                quantity: quantity
-            };
-
-            // Add booking information only for venues and studios
-            if (itemType === 'venue' || itemType === 'studio') {
-                // Set booking dates to null if not provided, otherwise use the provided dates
-                orderItem.bookedFrom = bookedFrom ? new Date(bookedFrom) : null;
-                orderItem.bookedTill = bookedTill ? new Date(bookedTill) : null;
-                orderItem.bookingStatus = 'pending';
-            }
-
-            orderItems.push(orderItem);
-            totalAmount += itemPrice * quantity;
-        }
-
-        if (isNaN(totalAmount)) {
-            console.error('Total amount is NaN:', { orderItems, totalAmount });
-            return res.status(400).json({
-                success: false,
-                message: "Error calculating total amount"
-            });
-        }
-
-        const orderData = {
-            userId: userId,
-            status: "draft",
-            items: orderItems,
-            totalAmount,
-            paymentType: null,
-            paymentStatus: 'pending',
-            paidAmount: 0,
-            remainingAmount: totalAmount,
-            stripePaymentIntentId: null
-        };
-
-        const newOrder = new Order(orderData);
-        await newOrder.save();
-
-        // Update venue order counts
-        if (venuesToUpdate.length > 0) {
-            try {
-                await Venue.updateMany(
-                    { _id: { $in: venuesToUpdate } },
-                    { $inc: { orderedCount: 1 } }
-                );
-                console.log(`Updated order count for ${venuesToUpdate.length} venue(s)`);
-            } catch (updateError) {
-                console.error("Error updating venue order counts:", updateError.message);
-            }
-        }
-
-        // Update studio order counts
-        if (studiosToUpdate.length > 0) {
-            try {
-                await Studio.updateMany(
-                    { _id: { $in: studiosToUpdate } },
-                    { $inc: { orderedCount: 1 } }
-                );
-                console.log(`Updated order count for ${studiosToUpdate.length} studio(s)`);
-            } catch (updateError) {
-                console.error("Error updating studio order counts:", updateError.message);
-            }
-        }
-
-        // Update dish order counts
-        if (dishesToUpdate.length > 0) {
-            try {
-                for (const dishUpdate of dishesToUpdate) {
-                    await Cuisine.updateOne(
-                        { 'dishes._id': dishUpdate.dishId },
-                        { $inc: { 'dishes.$.orderedCount': dishUpdate.quantity } }
-                    );
-                }
-                console.log(`Updated order count for ${dishesToUpdate.length} dish(es)`);
-            } catch (updateError) {
-                console.error("Error updating dish order counts:", updateError.message);
-            }
-        }
-
-        const populatedOrder = await Order.findById(newOrder._id)
-            .populate({
-                path: 'userId',
-                select: 'name email number'
-            })
-            .lean();
-
-        return res.status(201).json({
-            success: true,
-            message: "Order draft created successfully. Please select payment method to confirm.",
-            order: populatedOrder,
-            nextStep: "Select payment method to confirm your order"
-        });
-
-    } catch (error) {
-        console.error("Error creating order draft:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
+    if (req.user.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: "Admins are not allowed to place orders"
+      });
     }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide items to order"
+      });
+    }
+
+    const venueItems = items.filter(item => item.itemType === 'venue');
+    if (venueItems.length > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "You can only order one venue per order"
+      });
+    }
+
+    const studioItems = items.filter(item => item.itemType === 'studio');
+    if (studioItems.length > 1) {
+      return res.status(400).json({
+        success: false,
+        message: "You can only order one studio per order"
+      });
+    }
+
+    const dishItems = items.filter(item => item.itemType === 'dish');
+    const dishIds = dishItems.map(item => item.itemId);
+    const uniqueDishIds = [...new Set(dishIds)];
+    if (dishIds.length !== uniqueDishIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot add duplicate dishes to the same order"
+      });
+    }
+
+    const orderItems = [];
+    let totalAmount = 0;
+    const studiosToUpdate = [];
+    const venuesToUpdate = [];
+    const dishesToUpdate = [];
+
+    for (const requestItem of items) {
+      const { itemId, itemType, quantity, bookedFrom, bookedTill } = requestItem;
+      if (!itemId || !itemType || !quantity) {
+        return res.status(400).json({
+          success: false,
+          message: "Each item must have itemId, itemType, and quantity"
+        });
+      }
+
+      if (itemType === 'venue' || itemType === 'studio') {
+        if (bookedFrom && bookedTill) {
+          const fromDate = new Date(bookedFrom);
+          const tillDate = new Date(bookedTill);
+          const currentDate = new Date();
+          fromDate.setHours(0,0,0,0);
+          tillDate.setHours(0,0,0,0);
+          currentDate.setHours(0,0,0,0);
+          if (isNaN(fromDate.getTime()) || isNaN(tillDate.getTime())) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid date format"
+            });
+          }
+          if (fromDate < currentDate) {
+            return res.status(400).json({
+              success: false,
+              message: "Booking start date cannot be in the past"
+            });
+          }
+          if (tillDate < fromDate) {
+            return res.status(400).json({
+              success: false,
+              message: "Booking end date cannot be before start date"
+            });
+          }
+          const conflictingOrders = await Order.find({
+            'items.itemId': itemId,
+            'items.itemType': itemType,
+            'items.bookingStatus': 'confirmed',
+            'items.bookedFrom': { $ne: null },
+            'items.bookedTill': { $ne: null },
+            status: { $ne: 'draft' },
+            $or: [
+              { 'items.bookedFrom': { $lte: fromDate }, 'items.bookedTill': { $gt: fromDate } },
+              { 'items.bookedFrom': { $lt: tillDate }, 'items.bookedTill': { $gte: tillDate } },
+              { 'items.bookedFrom': { $gte: fromDate }, 'items.bookedTill': { $lte: tillDate } }
+            ]
+          });
+          if (conflictingOrders.length > 0) {
+            return res.status(400).json({
+              success: false,
+              message: `${itemType} is not available for the selected dates`
+            });
+          }
+        } else if ((bookedFrom && !bookedTill) || (!bookedFrom && bookedTill)) {
+          return res.status(400).json({
+            success: false,
+            message: "Both bookedFrom and bookedTill dates must be provided together, or both can be omitted"
+          });
+        }
+      }
+
+      let item;
+      if (itemType === 'venue') {
+        item = await Venue.findById(itemId);
+        if (!item) {
+          return res.status(404).json({
+            success: false,
+            message: "Venue not found"
+          });
+        }
+        venuesToUpdate.push(itemId);
+      } else if (itemType === 'studio') {
+        item = await Studio.findById(itemId);
+        if (!item) {
+          return res.status(404).json({
+            success: false,
+            message: "Studio not found"
+          });
+        }
+        studiosToUpdate.push(itemId);
+      } else if (itemType === 'dish') {
+        const cuisine = await Cuisine.findOne({ 'dishes._id': itemId }, { 'dishes.$': 1 });
+        item = cuisine ? cuisine.dishes[0] : null;
+        if (!item) {
+          return res.status(404).json({
+            success: false,
+            message: "Dish not found"
+          });
+        }
+        dishesToUpdate.push({ dishId: itemId, quantity: quantity });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid itemType (must be 'venue', 'studio', or 'dish')"
+        });
+      }
+
+      if (!item.price && item.price !== 0) {
+        return res.status(400).json({
+          success: false,
+          message: `${itemType} is missing price information`
+        });
+      }
+      const itemPrice = parseFloat(item.price);
+      if (isNaN(itemPrice)) {
+        return res.status(400).json({
+          success: false,
+          message: `${itemType} has invalid price format`
+        });
+      }
+      const orderItem = {
+        itemId: item._id,
+        itemType: itemType,
+        name: item.name,
+        price: itemPrice,
+        image: item.venueImage || item.studioImage || item.image,
+        quantity: quantity
+      };
+      if (itemType === 'venue' || itemType === 'studio') {
+        orderItem.bookedFrom = bookedFrom ? new Date(bookedFrom) : null;
+        orderItem.bookedTill = bookedTill ? new Date(bookedTill) : null;
+        orderItem.bookingStatus = 'pending';
+      }
+      orderItems.push(orderItem);
+      totalAmount += itemPrice * quantity;
+    }
+
+    if (isNaN(totalAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: "Error calculating total amount"
+      });
+    }
+
+    const orderData = {
+      userId: userId,
+      status: "draft",
+      items: orderItems,
+      totalAmount,
+      paymentType: null,
+      paymentStatus: 'pending',
+      paidAmount: 0,
+      remainingAmount: totalAmount,
+      stripePaymentIntentId: null
+    };
+
+    const newOrder = new Order(orderData);
+    await newOrder.save();
+
+    if (venuesToUpdate.length > 0) {
+      await Venue.updateMany(
+        { _id: { $in: venuesToUpdate } },
+        { $inc: { orderedCount: 1 } }
+      );
+    }
+    if (studiosToUpdate.length > 0) {
+      await Studio.updateMany(
+        { _id: { $in: studiosToUpdate } },
+        { $inc: { orderedCount: 1 } }
+      );
+    }
+    if (dishesToUpdate.length > 0) {
+      for (const dishUpdate of dishesToUpdate) {
+        await Cuisine.updateOne(
+          { 'dishes._id': dishUpdate.dishId },
+          { $inc: { 'dishes.$.orderedCount': dishUpdate.quantity } }
+        );
+      }
+    }
+
+    const populatedOrder = await Order.findById(newOrder._id)
+      .populate({
+        path: 'userId',
+        select: 'name email number'
+      })
+      .lean();
+
+    return res.status(201).json({
+      success: true,
+      message: "Order draft created successfully. Please select payment method to confirm.",
+      order: populatedOrder,
+      nextStep: "Select payment method to confirm your order"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
 };
 
 exports.userOrder = async (req, res) => {
@@ -498,14 +435,6 @@ exports.updateStatus = async (req, res) => {
             updateData.paymentStatus = 'completed';
             updateData.paidAmount = order.totalAmount;
             updateData.remainingAmount = 0;
-            
-            console.log(`Order ${orderId} completed - Auto-updating payment:`, {
-                totalAmount: order.totalAmount,
-                previousPaidAmount: order.paidAmount,
-                newPaidAmount: order.totalAmount,
-                previousRemainingAmount: order.remainingAmount,
-                newRemainingAmount: 0
-            });
         }
 
         const updatedOrder = await Order.findByIdAndUpdate(

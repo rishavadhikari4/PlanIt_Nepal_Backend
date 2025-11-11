@@ -3,7 +3,6 @@ const Review = require('../models/review');
 exports.postReviews = async (req, res) => {
   const userId = req.user.id;
   const { rating, comment } = req.body;
-
   try {
     if (!rating) {
       return res.status(400).json({
@@ -11,22 +10,17 @@ exports.postReviews = async (req, res) => {
         message: "Please fill up the rating before posting"
       });
     }
-
     const newReview = new Review({
       user: userId,
       rating,
       comment
     });
-
     await newReview.save();
-
     res.status(200).json({
-      success: true, 
+      success: true,
       message: "Review Sent Successfully"
     });
-
   } catch (error) {
-    console.error(error.message);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -39,22 +33,16 @@ exports.getAllReviews = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-
     const ratingFilter = req.query.rating;
     const filter = {};
-    if (ratingFilter) {
-      filter.rating = ratingFilter;
-    }
-
+    if (ratingFilter) filter.rating = ratingFilter;
     const reviews = await Review.find(filter)
       .populate('user', 'name profileImage verified')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
-
     const totalReviews = await Review.countDocuments(filter);
-
     return res.status(200).json({
       success: true,
       message: "Reviews fetched successfully",
@@ -68,9 +56,7 @@ exports.getAllReviews = async (req, res) => {
         }
       }
     });
-
   } catch (err) {
-    console.error("Error fetching reviews:", err.message);
     return res.status(500).json({
       success: false,
       message: 'Server error'
@@ -81,20 +67,17 @@ exports.getAllReviews = async (req, res) => {
 exports.getVerifiedReviews = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 6;
-
     const reviews = await Review.find({ verified: true })
-      .populate('user', 'name profileImage') 
+      .populate('user', 'name profileImage')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
-
     return res.status(200).json({
       success: true,
       message: `Top ${limit} verified reviews fetched successfully`,
       data: reviews
     });
   } catch (err) {
-    console.error("Error fetching verified reviews:", err.message);
     return res.status(500).json({
       success: false,
       message: 'Server error'
@@ -105,20 +88,17 @@ exports.getVerifiedReviews = async (req, res) => {
 exports.getUnverifiedReviews = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 6;
-
     const reviews = await Review.find({ verified: false })
-      .populate('user', 'name profileImage') // Populate user data
+      .populate('user', 'name profileImage')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
-
     return res.status(200).json({
       success: true,
       message: `Top ${limit} unverified reviews fetched successfully`,
       data: reviews
     });
   } catch (err) {
-    console.error("Error fetching unverified reviews:", err.message);
     return res.status(500).json({
       success: false,
       message: 'Server error'
@@ -127,23 +107,20 @@ exports.getUnverifiedReviews = async (req, res) => {
 };
 
 exports.deleteReview = async (req, res) => {
-  const {reviewId} = req.params;
+  const { reviewId } = req.params;
   try {
     const deletedReview = await Review.findByIdAndDelete(reviewId);
-
     if (!deletedReview) {
       return res.status(404).json({
         success: false,
         message: "Review not found"
       });
     }
-
     return res.status(200).json({
       success: true,
       message: "Review deleted successfully"
     });
   } catch (error) {
-    console.error("Error deleting review:", error.message);
     return res.status(500).json({
       success: false,
       message: "Internal server error"
@@ -153,7 +130,6 @@ exports.deleteReview = async (req, res) => {
 
 exports.toggleVerified = async (req, res) => {
   const reviewId = req.params.reviewId;
-
   try {
     const review = await Review.findById(reviewId);
     if (!review) {
@@ -162,17 +138,14 @@ exports.toggleVerified = async (req, res) => {
         message: "Review not found"
       });
     }
-
     review.verified = !review.verified;
     await review.save();
-
     return res.status(200).json({
       success: true,
       message: `Review verified status updated to ${review.verified}`,
       verified: review.verified
     });
   } catch (err) {
-    console.error("Error toggling review verified status:", err.message);
     return res.status(500).json({
       success: false,
       message: 'Server error'

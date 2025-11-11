@@ -35,7 +35,6 @@ exports.changePassword = async (req,res) => {
             message: "Password updated successfully" 
         });
     } catch (error) {
-        console.error("Error occured ",error.message);
         return res.status(500).json({ 
             success:false,
             message: "Server Error" 
@@ -55,7 +54,6 @@ exports.mailPasswordResetToken = async (req,res) => {
         }
         
         const resetToken = crypto.randomBytes(32).toString("hex");
-        console.log(resetToken);
 
         const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
         user.resetPasswordToken = hashedToken;
@@ -65,7 +63,6 @@ exports.mailPasswordResetToken = async (req,res) => {
 
         try {
             const jobId = queuePasswordResetEmail(email, resetToken);
-            console.log(`📧 Password reset email queued (Job ID: ${jobId}) for:`, email);
             
             return res.status(200).json({
                 success: true,
@@ -83,7 +80,6 @@ exports.mailPasswordResetToken = async (req,res) => {
         }
     }
     catch (error) {
-        console.error(error);
         return res.status(500).json({ 
             success:false,
             message: `Server Error` 
@@ -122,7 +118,6 @@ exports.forgotPassword = async (req,res) => {
             message: "Password reset successfully" 
         });
     } catch (error) {
-        console.error("Error Occured:",error.message);
         return res.status(500).json({ 
             success:false,
             message: "Server Error" 

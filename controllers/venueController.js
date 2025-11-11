@@ -1,165 +1,68 @@
 const Venue = require('../models/Venue');
 const Order = require('../models/order');
-
-const {uploadToCloudinary,deleteFromCloudinary} = require('../config/cloudinaryConfig');
+const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinaryConfig');
 
 exports.uploadVenue = async (req, res) => {
-    const { name, location, description, capacity, price, services } = req.body;
+    const { name, location, description, capacity, price } = req.body;
     try {
         if (!name || !location || !description || !capacity || !price) {
-            return res.status(400).json({
-                success: false,
-                message: "Fill all the fields"
-            });
+            return res.status(400).json({ success: false, message: "Fill all the fields" });
         }
-
         if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide a venue image"
-            });
+            return res.status(400).json({ success: false, message: "Please provide a venue image" });
         }
-
         if (price <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Price must be a positive number"
-            });
+            return res.status(400).json({ success: false, message: "Price must be a positive number" });
         }
-
-        // Parse services similar to studio
-        let parsedServices = [];
-        if (services) {
-            if (typeof services === 'string') {
-                try {
-                    parsedServices = JSON.parse(services);
-                } catch (error) {
-                    parsedServices = [services];
-                }
-            } else if (Array.isArray(services)) {
-                parsedServices = services;
-            }
-        }
-        
-        const validServices = [
-            'Indoor Hall', 
-            'Outdoor Garden', 
-            'Parking Available', 
-            'Catering Service', 
-            'Decoration Service', 
-            'Sound System', 
-            'Lighting System', 
-            'Air Conditioning', 
-            'Bridal Room', 
-            'Security Service',
-            'Valet Parking',
-            'Dance Floor',
-            'Stage Setup',
-            'Bar Service',
-            'Kitchen Facilities',
-            'Guest Accommodation',
-            'Wi-Fi Available',
-            'Photo Booth Area',
-            'Live Music Setup',
-            'DJ Service'
-        ];
-
-        if (parsedServices && Array.isArray(parsedServices)) {
-            const invalidServices = parsedServices.filter(service => !validServices.includes(service));
-            if (invalidServices.length > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Invalid services: ${invalidServices.join(', ')}. Valid services are: ${validServices.join(', ')}`
-                });
-            }
-        }
-
         const result = await uploadToCloudinary(req.file.buffer);
-
         const newVenue = new Venue({
             name,
             location,
             description,
             capacity,
             price,
-            services: parsedServices || [],
             venueImage: result.secure_url,
             venueImageId: result.public_id,
             photos: []
         });
-
         await newVenue.save();
-
-        return res.status(201).json({
-            success: true,
-            message: "Venue Added Successfully",
-            venue: newVenue
-        });
-
-    } catch (error) {
-        console.error("Error Occurred", error.message);
-        res.status(500).json({
-            success: false,
-            message: "Internal Server Error",
-        });
+        return res.status(201).json({ success: true, message: "Venue Added Successfully", venue: newVenue });
+    } catch {
+        res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
 exports.addVenuePhotos = async (req, res) => {
     try {
         const venueId = req.params.venueId;
-        const files = req.files; 
-
+        const files = req.files;
         if (!files || files.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide at least one photo"
-            });
+            return res.status(400).json({ success: false, message: "Please provide at least one photo" });
         }
         const venue = await Venue.findById(venueId);
         if (!venue) {
-            return res.status(404).json({
-                success: false,
-                message: "Venue not found"
-            });
+            return res.status(404).json({ success: false, message: "Venue not found" });
         }
-
         const uploadedPhotos = [];
         for (const file of files) {
             try {
                 const result = await uploadToCloudinary(file.buffer);
-                uploadedPhotos.push({
-                    image: result.secure_url,
-                    imageId: result.public_id
-                });
-            } catch (uploadError) {
-                console.error("Error uploading photo:", uploadError);
-            }
+                uploadedPhotos.push({ image: result.secure_url, imageId: result.public_id });
+            } catch {}
         }
-
         if (uploadedPhotos.length === 0) {
-            return res.status(500).json({
-                success: false,
-                message: "Failed to upload any photos"
-            });
+            return res.status(500).json({ success: false, message: "Failed to upload any photos" });
         }
-
         venue.photos.push(...uploadedPhotos);
         await venue.save();
-
         return res.status(200).json({
             success: true,
             message: `${uploadedPhotos.length} photos added successfully`,
-            venue: venue,
+            venue,
             addedPhotos: uploadedPhotos
         });
-
-    } catch (error) {
-        console.error("Error adding venue photos:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
@@ -168,43 +71,30 @@ exports.getAllVenues = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
-
         const sortField = req.query.sortField || 'createdAt';
         const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
-
         const serviceFilter = req.query.service;
         const filter = {};
-        
         if (serviceFilter) {
             filter.services = { $in: [serviceFilter] };
         }
-
         if (req.query.minPrice || req.query.maxPrice) {
             filter.price = {};
-            if (req.query.minPrice) {
-                filter.price.$gte = parseFloat(req.query.minPrice);
-            }
-            if (req.query.maxPrice) {
-                filter.price.$lte = parseFloat(req.query.maxPrice);
-            }
+            if (req.query.minPrice) filter.price.$gte = parseFloat(req.query.minPrice);
+            if (req.query.maxPrice) filter.price.$lte = parseFloat(req.query.maxPrice);
         }
-
         if (req.query.location) {
             filter.location = { $regex: req.query.location, $options: 'i' };
         }
-
         if (req.query.capacity) {
             filter.capacity = { $regex: req.query.capacity, $options: 'i' };
         }
-
         const venues = await Venue.find(filter)
             .sort({ [sortField]: sortOrder })
             .skip(skip)
             .limit(limit)
             .lean();
-
         const totalVenues = await Venue.countDocuments(filter);
-
         if (!venues || venues.length === 0) {
             return res.status(404).json({
                 success: false,
@@ -220,7 +110,6 @@ exports.getAllVenues = async (req, res) => {
                 }
             });
         }
-
         return res.status(200).json({
             success: true,
             message: "Venues retrieved successfully",
@@ -236,39 +125,29 @@ exports.getAllVenues = async (req, res) => {
                 }
             }
         });
-
-    } catch (error) {
-        console.error("Error fetching venues:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
-exports.getVenuesById = async (req,res) => {
+exports.getVenuesById = async (req, res) => {
     const venueId = req.params.venueId;
     try {
         const venue = await Venue.findById(venueId).lean();
         if (!venue) {
-            return res.status(404).json({ 
-                success: false,
-                message: 'Venue not found' 
-            });
+            return res.status(404).json({ success: false, message: 'Venue not found' });
         }
-
         const orders = await Order.find({
             'items.itemId': venueId,
             'items.itemType': 'venue',
             'items.bookingStatus': 'confirmed',
             status: { $in: ['confirmed', 'processing', 'completed'] }
         }).select('items status');
-
         const bookedDates = [];
         orders.forEach(order => {
             order.items.forEach(item => {
-                if (item.itemId.toString() === venueId && 
-                    item.itemType === 'venue' && 
+                if (item.itemId.toString() === venueId &&
+                    item.itemType === 'venue' &&
                     item.bookingStatus === 'confirmed') {
                     bookedDates.push({
                         bookedFrom: item.bookedFrom,
@@ -278,88 +157,30 @@ exports.getVenuesById = async (req,res) => {
                 }
             });
         });
-
-        return res.status(200).json({ 
+        return res.status(200).json({
             success: true,
             message: 'Venue fetched successfully',
             data: {
-                venue: venue,
-                bookedDates: bookedDates,
+                venue,
+                bookedDates,
                 totalBookings: bookedDates.length
             }
         });
-
-    } catch (error) {
-        console.error('Error fetching venue with booking dates:', error);
-        return res.status(500).json({ 
-            success: false,
-            message: 'Internal server error' 
-        });
+    } catch {
+        return res.status(500).json({ success: false, message: 'Internal server error' });
     }
-}
+};
 
 exports.updateVenue = async (req, res) => {
     try {
         const { venueId } = req.params;
-        const { name, location, description, capacity, price, services } = req.body;
-
+        const { name, location, description, capacity, price } = req.body;
         const venue = await Venue.findById(venueId);
         if (!venue) {
-            return res.status(404).json({
-                success: false,
-                message: "Venue not found"
-            });
+            return res.status(404).json({ success: false, message: "Venue not found" });
         }
-
-        let parsedServices = venue.services;
-        if (services) {
-            if (typeof services === 'string') {
-                try {
-                    parsedServices = JSON.parse(services);
-                } catch (error) {
-                    parsedServices = [services];
-                }
-            } else if (Array.isArray(services)) {
-                parsedServices = services;
-            }
-        }
-
-        const validServices = [
-            'Indoor Hall', 
-            'Outdoor Garden', 
-            'Parking Available', 
-            'Catering Service', 
-            'Decoration Service', 
-            'Sound System', 
-            'Lighting System', 
-            'Air Conditioning', 
-            'Bridal Room', 
-            'Security Service',
-            'Valet Parking',
-            'Dance Floor',
-            'Stage Setup',
-            'Bar Service',
-            'Kitchen Facilities',
-            'Guest Accommodation',
-            'Wi-Fi Available',
-            'Photo Booth Area',
-            'Live Music Setup',
-            'DJ Service'
-        ];
-
-        if (parsedServices && Array.isArray(parsedServices)) {
-            const invalidServices = parsedServices.filter(service => !validServices.includes(service));
-            if (invalidServices.length > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Invalid services: ${invalidServices.join(', ')}`
-                });
-            }
-        }
-
         let imageUrl = venue.venueImage;
         let imageId = venue.venueImageId;
-
         if (req.file) {
             if (venue.venueImageId) {
                 await deleteFromCloudinary(venue.venueImageId);
@@ -368,7 +189,6 @@ exports.updateVenue = async (req, res) => {
             imageUrl = result.secure_url;
             imageId = result.public_id;
         }
-
         const updatedVenue = await Venue.findByIdAndUpdate(
             venueId,
             {
@@ -377,82 +197,43 @@ exports.updateVenue = async (req, res) => {
                 description: description || venue.description,
                 capacity: capacity || venue.capacity,
                 price: price || venue.price,
-                services: parsedServices,
                 venueImage: imageUrl,
                 venueImageId: imageId
             },
             { new: true }
         );
-
-        return res.status(200).json({
-            success: true,
-            message: "Venue updated successfully",
-            venue: updatedVenue
-        });
-
-    } catch (error) {
-        console.error("Error updating venue:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+        return res.status(200).json({ success: true, message: "Venue updated successfully", venue: updatedVenue });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
-exports.deleteVenue = async (req,res) => {
+exports.deleteVenue = async (req, res) => {
     const { venueId } = req.params;
-     try {
-        console.log(venueId)
-        if(!venueId){
-            return res.status(400).json({
-                success:false,
-                message:"Venue Id is required"
-            });
+    try {
+        if (!venueId) {
+            return res.status(400).json({ success: false, message: "Venue Id is required" });
         }
         const venue = await Venue.findById(venueId);
-
-        if(!venue){
-            return res.status(404).json({
-                success:false,
-                message:"Venue not found"
-            });
+        if (!venue) {
+            return res.status(404).json({ success: false, message: "Venue not found" });
         }
-
         if (venue.venueImageId) {
-            try {
-                await deleteFromCloudinary(venue.venueImageId);
-            } catch (cloudinaryError) {
-                console.error("Error deleting main venue image from Cloudinary:", cloudinaryError);
-            }
+            try { await deleteFromCloudinary(venue.venueImageId); } catch {}
         }
-
-        if(venue.photos && venue.photos.length > 0){
-            for(const photo of venue.photos){
-                if(photo.imageId){
-                    try{
-                        await deleteFromCloudinary(photo.imageId);
-                    }catch(cloudinaryError){
-                        console.error("Error deleting photo from Cloudinary:", cloudinaryError);
-                    }
+        if (venue.photos && venue.photos.length > 0) {
+            for (const photo of venue.photos) {
+                if (photo.imageId) {
+                    try { await deleteFromCloudinary(photo.imageId); } catch {}
                 }
             }
         }
         await Venue.findByIdAndDelete(venueId);
-
-        return res.status(200).json({ 
-            success:true,
-            message: "Venue and all associated images deleted successfully"
-        });
-    } catch (error) {
-        console.error('Error deleting venue:', error);
-        res.status(500).json({ 
-            success:false,
-            message: 'Internal server error' 
-        });
+        return res.status(200).json({ success: true, message: "Venue and all associated images deleted successfully" });
+    } catch {
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
-
-    
-}
+};
 
 exports.searchVenues = async (req, res) => {
     try {
@@ -460,43 +241,34 @@ exports.searchVenues = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
-
         let filter = {};
-
         if (q) {
             filter.$or = [
                 { name: { $regex: q, $options: 'i' } },
                 { description: { $regex: q, $options: 'i' } }
             ];
         }
-
         if (services) {
             const serviceArray = services.split(',');
             filter.services = { $in: serviceArray };
         }
-
         if (minPrice || maxPrice) {
             filter.price = {};
             if (minPrice) filter.price.$gte = parseFloat(minPrice);
             if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
         }
-
         if (location) {
             filter.location = { $regex: location, $options: 'i' };
         }
-
         if (capacity) {
             filter.capacity = { $regex: capacity, $options: 'i' };
         }
-
         const venues = await Venue.find(filter)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .lean();
-
         const totalVenues = await Venue.countDocuments(filter);
-
         return res.status(200).json({
             success: true,
             message: "Search completed successfully",
@@ -511,129 +283,76 @@ exports.searchVenues = async (req, res) => {
                 searchQuery: { q, services, minPrice, maxPrice, location, capacity }
             }
         });
-
-    } catch (error) {
-        console.error("Error searching venues:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
-exports.deleteVenuePhoto = async (req,res)=>{
-    try{
-        const {venueId,photoId} = req.params;
+exports.deleteVenuePhoto = async (req, res) => {
+    try {
+        const { venueId, photoId } = req.params;
         const venue = await Venue.findById(venueId);
-
-        if(!venue){
-            return res.status(404).json({
-                success:false,
-                message:"Venue not found"
-            });
+        if (!venue) {
+            return res.status(404).json({ success: false, message: "Venue not found" });
         }
-        const photoIndex = venue.photos.findIndex(photo=>photo._id.toString() === photoId);
-
-        if(photoIndex === -1){
-            return res.status(404).json({
-                success:false,
-                message: "Photo Not Found"
-            });
+        const photoIndex = venue.photos.findIndex(photo => photo._id.toString() === photoId);
+        if (photoIndex === -1) {
+            return res.status(404).json({ success: false, message: "Photo Not Found" });
         }
-        
         const photo = venue.photos[photoIndex];
-        
         if (photo.imageId) {
-            try {
-                await deleteFromCloudinary(photo.imageId);
-            } catch (cloudinaryError) {
-                console.error("Error deleting photo from Cloudinary:", cloudinaryError);
-            }
+            try { await deleteFromCloudinary(photo.imageId); } catch {}
         }
-        venue.photos.splice(photoIndex,1);
+        venue.photos.splice(photoIndex, 1);
         await venue.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Photo deleted successfully",
-            venue: venue
-        });
-
-    }catch(error){
-        console.error("Error deleting Venue Photo:",error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+        return res.status(200).json({ success: true, message: "Photo deleted successfully", venue });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
 exports.rateVenue = async (req, res) => {
     try {
-        const  {venueId}  = req.params;
+        const { venueId } = req.params;
         const { rating } = req.body;
         const userId = req.user.id;
-
         if (!rating || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
-            return res.status(400).json({
-                success: false,
-                message: "Rating must be an integer between 1 and 5"
-            });
+            return res.status(400).json({ success: false, message: "Rating must be an integer between 1 and 5" });
         }
         const venue = await Venue.findById(venueId);
         if (!venue) {
-            return res.status(404).json({
-                success: false,
-                message: "Venue not found"
-            });
+            return res.status(404).json({ success: false, message: "Venue not found" });
         }
-
-        const existingRatingIndex = venue.ratings.findIndex(
-            r => r.userId.toString() === userId
-        );
-
+        const existingRatingIndex = venue.ratings.findIndex(r => r.userId.toString() === userId);
         let oldRating = null;
         let isUpdate = false;
-
         if (existingRatingIndex !== -1) {
             oldRating = venue.ratings[existingRatingIndex].rating;
             venue.ratings[existingRatingIndex].rating = rating;
             venue.ratings[existingRatingIndex].ratedAt = new Date();
             isUpdate = true;
         } else {
-            venue.ratings.push({
-                userId: userId,
-                rating: rating
-            });
+            venue.ratings.push({ userId, rating });
             venue.totalRatings = venue.ratings.length;
         }
-
         const totalRating = venue.ratings.reduce((sum, r) => sum + r.rating, 0);
         const averageRating = totalRating / venue.ratings.length;
         venue.rating = Math.round(averageRating * 10) / 10;
-
         await venue.save();
-
         return res.status(200).json({
             success: true,
             message: isUpdate ? "Rating updated successfully" : "Rating added successfully",
             data: {
                 venueId: venue._id,
                 userRating: rating,
-                oldRating: oldRating,
+                oldRating,
                 averageRating: venue.rating,
                 totalRatings: venue.totalRatings,
-                isUpdate: isUpdate
+                isUpdate
             }
         });
-
-    } catch (error) {
-        console.error("Error rating venue:", error.message);
-        
-        return res.status(500).json({
-            success: false,
-            message: "Internal Server Error"
-        });
+    } catch {
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 

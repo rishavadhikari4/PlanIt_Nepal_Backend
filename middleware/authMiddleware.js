@@ -1,9 +1,8 @@
+const { verifyToken } = require("../utils/tokenHelpers");
 
-const {verifyToken} = require("../utils/tokenHelpers");
 const authMiddleware = (req, res, next) => {
     try {
-        if (!req || !req.headers) {
-            console.error("Request object is undefined");
+        if (!req?.headers) {
             return res.status(500).json({ message: "Internal Server Error" });
         }
 
@@ -18,19 +17,17 @@ const authMiddleware = (req, res, next) => {
             throw new Error("ACCESS_TOKEN_SECRET not defined");
         }
 
-        const decoded = verifyToken(accessToken, secret);;
+        const decoded = verifyToken(accessToken, secret);
         req.user = decoded;
         next();
-
     } catch (error) {
         if (error.name === "TokenExpiredError") {
             return res.status(401).json({ message: "accessToken expired" });
-        } else if (error.name === "JsonWebTokenError") {
-            return res.status(401).json({ message: "Invalid accessToken" });
-        } else {
-            console.error("Authentication error:", error);
-            return res.status(500).json({ message: "Server error during authentication" });
         }
+        if (error.name === "JsonWebTokenError") {
+            return res.status(401).json({ message: "Invalid accessToken" });
+        }
+        return res.status(500).json({ message: "Server error during authentication" });
     }
 };
 
