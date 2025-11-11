@@ -60,31 +60,6 @@ const venueSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
-  services: [{
-    type: String,
-    enum: [
-      'Indoor Hall', 
-      'Outdoor Garden', 
-      'Parking Available', 
-      'Catering Service', 
-      'Decoration Service', 
-      'Sound System', 
-      'Lighting System', 
-      'Air Conditioning', 
-      'Bridal Room', 
-      'Security Service',
-      'Valet Parking',
-      'Dance Floor',
-      'Stage Setup',
-      'Bar Service',
-      'Kitchen Facilities',
-      'Guest Accommodation',
-      'Wi-Fi Available',
-      'Photo Booth Area',
-      'Live Music Setup',
-      'DJ Service'
-    ]
-  }],
   photos: [imageSchema],
   venueImage: {
     type: String,
