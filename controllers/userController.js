@@ -12,7 +12,8 @@ exports.getProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
         res.status(200).json({ success: true, message: 'User fetched successfully', user });
-    } catch {
+    } catch (error) {
+        console.error('Error getting profile:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
@@ -20,31 +21,63 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     const { name, email, number } = req.body;
     const userId = req.user.id;
+    
     try {
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
-        if (email && email !== user.email) {
-            const emailExists = await User.findOne({ email, _id: { $ne: userId } });
+
+        // Trim and normalize email
+        const normalizedEmail = email?.trim().toLowerCase();
+        const currentEmail = user.email?.trim().toLowerCase();
+        
+        if (email && normalizedEmail !== currentEmail) {
+            const emailExists = await User.findOne({ 
+                email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') }, 
+                _id: { $ne: userId } 
+            });
+            
             if (emailExists) {
                 return res.status(400).json({ success: false, message: 'Email already in use by another account' });
             }
-            user.email = email;
+            
+            user.email = normalizedEmail;
         }
+
         if (number && number !== user.number) {
             const numberExists = await User.findOne({ number, _id: { $ne: userId } });
             if (numberExists) {
                 return res.status(400).json({ success: false, message: 'Number already in use by another account' });
             }
+            
             user.number = number;
         }
-        if (name) user.name = name;
+
+        if (name && name.trim() !== user.name) {
+            user.name = name.trim();
+        }
+
         await user.save();
+        console.log('Profile updated successfully for user:', userId);
+
         const { password, refreshToken, resetPasswordToken, resetPasswordExpire, ...safeUser } = user.toObject();
-        res.status(200).json({ success: true, message: 'Profile updated successfully', user: safeUser });
-    } catch {
-        res.status(500).json({ success: false, message: 'Internal Server Error' });
+        
+        res.status(200).json({ 
+            success: true, 
+            message: 'Profile updated successfully', 
+            user: safeUser 
+        });
+        
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        if (error.code === 11000) {
+            console.error('Duplicate key error:', error.keyPattern);
+        }
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal Server Error: ' + error.message 
+        });
     }
 };
 
@@ -54,7 +87,8 @@ exports.getAllUsers = async (req, res) => {
             .select('-password -refreshToken -resetPasswordToken -resetPasswordExpire')
             .lean();
         res.status(200).json({ success: true, message: 'Users fetched successfully', users });
-    } catch {
+    } catch (error) {
+        console.error('Error getting all users:', error);
         res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
@@ -73,8 +107,10 @@ exports.deleteUserAccount = async (req, res) => {
             try { await deleteFromCloudinary(user.profileImageId); } catch {}
         }
         await User.findByIdAndDelete(userId);
+        console.log('User account deleted by admin:', userId);
         return res.status(200).json({ success: true, message: 'User deleted successfully' });
-    } catch {
+    } catch (error) {
+        console.error('Error deleting user account:', error);
         return res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
@@ -95,14 +131,17 @@ exports.uploadProfilePic = async (req, res) => {
         let result;
         try {
             result = await uploadToCloudinary(req.file.buffer);
-        } catch {
+        } catch (error) {
+            console.error('Error uploading to Cloudinary:', error);
             return res.status(500).json({ success: false, message: "Failed to upload image. Please try again." });
         }
         user.profileImage = result.secure_url;
         user.profileImageId = result.public_id;
         await user.save();
+        console.log('Profile picture updated for user:', userId);
         return res.status(200).json({ success: true, message: "Profile picture updated successfully", image: result.secure_url });
-    } catch {
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
         return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -123,8 +162,10 @@ exports.deleteOwnAccount = async (req, res) => {
             try { await deleteFromCloudinary(user.profileImageId); } catch {}
         }
         await User.findByIdAndDelete(userId);
+        console.log('User deleted their own account:', userId);
         return res.status(200).json({ success: true, message: 'User deleted successfully' });
-    } catch {
+    } catch (error) {
+        console.error('Error deleting own account:', error);
         return res.status(500).json({ success: false, message: 'Internal Server Error' });
     }
 };
@@ -187,7 +228,8 @@ exports.getUserForAdminInspection = async (req, res) => {
                 }
             }
         });
-    } catch {
+    } catch (error) {
+        console.error('Error in admin user inspection:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 };
