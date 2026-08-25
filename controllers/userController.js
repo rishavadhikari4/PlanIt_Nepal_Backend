@@ -398,3 +398,99 @@ exports.getFavoriteIds = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+/* ------------------------------------------------------------------ *
+ * Cart
+ *
+ * The cart lived in sessionStorage: close the tab and a half-built plan worth
+ * several lakh was gone, and it was invisible on the phone the customer built
+ * half of it on.
+ *
+ * Held as a draft, not an order. Prices and names are re-read from the
+ * catalogue when the order is placed, so nothing here can pin an old price.
+ * ------------------------------------------------------------------ */
+
+const MAX_CART_ITEMS = 60;
+
+/* Only the fields the cart actually needs. Whatever else the client sends is
+   dropped rather than stored — the cart is not a place to park arbitrary
+   documents on a user record. */
+const cleanCartItem = (item) => {
+  if (!item || typeof item !== 'object') return null;
+  if (!item._id || !item.type) return null;
+
+  const out = {
+    _id: String(item._id).slice(0, 64),
+    type: String(item.type).slice(0, 16),
+    name: String(item.name || '').slice(0, 200),
+    price: Number(item.price) || 0,
+    quantity: Math.max(1, Math.min(100000, parseInt(item.quantity, 10) || 1)),
+  };
+  if (item.image) out.image = String(item.image).slice(0, 500);
+  if (item.category) out.category = String(item.category).slice(0, 120);
+  if (item.capacity) out.capacity = Number(item.capacity) || undefined;
+  if (item.bookingDates?.from && item.bookingDates?.till) {
+    out.bookingDates = {
+      from: new Date(item.bookingDates.from).toISOString(),
+      till: new Date(item.bookingDates.till).toISOString(),
+    };
+  }
+  return out;
+};
+
+exports.getCart = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('cart').lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Cart fetched successfully',
+      data: {
+        cart: user?.cart || { items: [], guestCount: null, updatedAt: null },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching cart:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Replaces the stored cart wholesale.
+ *
+ * The client owns cart state — it is edited far too often to round-trip every
+ * change — so this is a save, not a merge. The client decides what the cart
+ * is; this remembers it.
+ */
+exports.saveCart = async (req, res) => {
+  try {
+    const incoming = Array.isArray(req.body.items) ? req.body.items : [];
+    if (incoming.length > MAX_CART_ITEMS) {
+      return res.status(400).json({
+        success: false,
+        message: `A cart can hold at most ${MAX_CART_ITEMS} items.`,
+      });
+    }
+
+    const items = incoming.map(cleanCartItem).filter(Boolean);
+
+    let guestCount = null;
+    if (req.body.guestCount) {
+      const n = parseInt(req.body.guestCount, 10);
+      if (Number.isInteger(n) && n > 0 && n <= 100000) guestCount = n;
+    }
+
+    await User.updateOne(
+      { _id: req.user.id },
+      { $set: { cart: { items, guestCount, updatedAt: new Date() } } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cart saved',
+      data: { count: items.length },
+    });
+  } catch (error) {
+    console.error('Error saving cart:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

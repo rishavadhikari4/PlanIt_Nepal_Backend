@@ -31,6 +31,11 @@ router.get('/me/favorites', authMiddleware, authorizeRoles("customer"), userCont
 router.get('/me/favorites/ids', authMiddleware, authorizeRoles("customer"), userController.getFavoriteIds);
 router.post('/me/favorites/toggle', authMiddleware, authorizeRoles("customer"), userController.toggleFavorite);
 
+/* Cart. Kept server-side so it survives the tab closing and follows the
+   customer between devices. */
+router.get('/me/cart', authMiddleware, authorizeRoles("customer"), userController.getCart);
+router.put('/me/cart', authMiddleware, authorizeRoles("customer"), userController.saveCart);
+
 // Delete user account by ID (parameter route - must come after specific routes)
 router.delete('/:userId', authMiddleware, authorizeRoles('admin'), userController.deleteUserAccount);
 

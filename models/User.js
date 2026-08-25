@@ -79,7 +79,29 @@ const userSchema = new mongoose.Schema({
             type: Date,
             default: Date.now
         }
-    }]
+    }],
+    /* The cart, so it survives closing the tab and follows the customer to
+       their phone. It lived in sessionStorage, which meant a half-built plan
+       worth several lakh vanished the moment the tab closed.
+
+       Stored loosely on purpose: this is a draft, not an order. Prices and
+       names are re-read from the catalogue when the order is actually placed,
+       so a stale cart cannot lock in an old price. */
+    cart: {
+        items: {
+            type: [mongoose.Schema.Types.Mixed],
+            default: []
+        },
+        guestCount: {
+            type: Number,
+            min: 1,
+            default: null
+        },
+        updatedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }
 }, { timestamps: true });
 
 /* email and number are declared unique on the fields themselves; `number` is
