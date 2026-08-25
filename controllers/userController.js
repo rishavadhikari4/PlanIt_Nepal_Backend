@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinaryConfig");
 const bcrypt = require("bcryptjs");
+const { escapeRegex } = require('../middleware/sanitize');
 
 exports.getProfile = async (req, res) => {
     const userId = req.user.id;
@@ -34,7 +35,7 @@ exports.updateProfile = async (req, res) => {
         
         if (email && normalizedEmail !== currentEmail) {
             const emailExists = await User.findOne({ 
-                email: { $regex: new RegExp(`^${normalizedEmail}$`, 'i') }, 
+                email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i'), 
                 _id: { $ne: userId } 
             });
             

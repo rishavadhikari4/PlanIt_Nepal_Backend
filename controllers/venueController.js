@@ -2,6 +2,7 @@ const Venue = require('../models/Venue');
 const Order = require('../models/order');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinaryConfig');
 const mongoose = require('mongoose');
+const { containsFilter } = require('../middleware/sanitize');
 
 exports.uploadVenue = async (req, res) => {
     const { name, location, description, capacity, price } = req.body;
@@ -86,10 +87,10 @@ exports.getAllVenues = async (req, res) => {
             if (req.query.maxPrice) filter.price.$lte = parseFloat(req.query.maxPrice);
         }
         if (req.query.location) {
-            filter.location = { $regex: req.query.location, $options: 'i' };
+            filter.location = containsFilter(req.query.location);
         }
         if (req.query.capacity) {
-            filter.capacity = { $regex: req.query.capacity, $options: 'i' };
+            filter.capacity = containsFilter(req.query.capacity);
         }
         const venues = await Venue.find(filter)
             .sort({ [sortField]: sortOrder })
@@ -246,8 +247,8 @@ exports.searchVenues = async (req, res) => {
         let filter = {};
         if (q) {
             filter.$or = [
-                { name: { $regex: q, $options: 'i' } },
-                { description: { $regex: q, $options: 'i' } }
+                { name: containsFilter(q) },
+                { description: containsFilter(q) }
             ];
         }
         if (services) {
@@ -260,10 +261,10 @@ exports.searchVenues = async (req, res) => {
             if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
         }
         if (location) {
-            filter.location = { $regex: location, $options: 'i' };
+            filter.location = containsFilter(location);
         }
         if (capacity) {
-            filter.capacity = { $regex: capacity, $options: 'i' };
+            filter.capacity = containsFilter(capacity);
         }
         const venues = await Venue.find(filter)
             .sort({ createdAt: -1 })

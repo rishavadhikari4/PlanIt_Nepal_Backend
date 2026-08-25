@@ -1,5 +1,6 @@
 const Cuisine = require('../models/Cuisine');
 const { deleteFromCloudinary, uploadToCloudinary } = require('../config/cloudinaryConfig');
+const { escapeRegex } = require('../middleware/sanitize');
 
 exports.uploadDish = async (req, res) => {
   const { name, price, description } = req.body;
@@ -365,7 +366,7 @@ exports.searchCuisines = async (req, res) => {
         message: "Please provide a search term"
       });
     }
-    const searchTerm = new RegExp(query.trim(), 'i');
+    const searchTerm = new RegExp(escapeRegex(query.trim().slice(0, 128)), 'i');
     const results = await Cuisine.find({
       $or: [
         { category: searchTerm },

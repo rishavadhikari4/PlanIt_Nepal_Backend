@@ -1,6 +1,7 @@
 const Studio = require("../models/studio");
 const Order = require('../models/order');
 const { uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinaryConfig");
+const { containsFilter } = require('../middleware/sanitize');
 
 exports.uploadStudio = async (req, res) => {
   const { name, location, description, price, services } = req.body;
@@ -135,7 +136,7 @@ exports.getAllStudios = async (req, res) => {
       if (req.query.maxPrice) filter.price.$lte = parseFloat(req.query.maxPrice);
     }
     if (req.query.location) {
-      filter.location = { $regex: req.query.location, $options: 'i' };
+      filter.location = containsFilter(req.query.location);
     }
     const studios = await Studio.find(filter)
       .sort({ [sortField]: sortOrder })
@@ -405,8 +406,8 @@ exports.searchStudios = async (req, res) => {
     let filter = {};
     if (q) {
       filter.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { description: { $regex: q, $options: 'i' } }
+        { name: containsFilter(q) },
+        { description: containsFilter(q) }
       ];
     }
     if (services) {
@@ -419,7 +420,7 @@ exports.searchStudios = async (req, res) => {
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
     }
     if (location) {
-      filter.location = { $regex: location, $options: 'i' };
+      filter.location = containsFilter(location);
     }
     const studios = await Studio.find(filter)
       .sort({ createdAt: -1 })

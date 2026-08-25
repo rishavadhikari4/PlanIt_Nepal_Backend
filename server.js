@@ -4,9 +4,11 @@
 require("dotenv").config();
 
 const express = require("express");
+const helmet = require("helmet");
 const passport = require("passport");
 const cors = require("cors");
 const cookieParser = require('cookie-parser');
+const { sanitize } = require('./middleware/sanitize');
 
 const connectDB = require('./config/dbConfig');
 require('./config/passportConfig');
@@ -21,7 +23,22 @@ const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-app.use(express.json());
+/* Security headers. The API serves JSON to a separate origin, so the CSP and
+   frame rules that matter for HTML are not the point — HSTS, nosniff and a
+   referrer policy are. crossOriginResourcePolicy is relaxed because the
+   frontend is on a different origin. */
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+}));
+app.disable("x-powered-by");
+
+/* An explicit ceiling on request bodies. Images go through multer, which has
+   its own limit, so nothing legitimate needs more than this. */
+app.use(express.json({ limit: '64kb' }));
+app.use(express.urlencoded({ extended: true, limit: '64kb' }));
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:8080",
@@ -40,6 +57,11 @@ app.use(cors({
 }));
 
 app.use(cookieParser());
+
+/* Rejects Mongo operators in body, query and params. Must sit before any
+   route that puts a request value into a query. */
+app.use(sanitize);
+
 app.use(passport.initialize());
 app.set("trust proxy", 1);
 

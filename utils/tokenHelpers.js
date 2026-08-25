@@ -1,8 +1,24 @@
 const jwt = require('jsonwebtoken');
 
 const isProduction = process.env.NODE_ENV === 'production';
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'dev-access-secret';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'dev-refresh-secret';
+
+/* These used to fall back to the literals 'dev-access-secret' and
+   'dev-refresh-secret'. A deployment missing the env vars would boot happily
+   and sign every token with a constant that is in the source — anyone could
+   mint an admin token. Refuse to start instead. */
+const requireSecret = (name) => {
+  const value = process.env[name];
+  if (!value || value.length < 32) {
+    throw new Error(
+      `${name} must be set to at least 32 characters. Generate one with:\n` +
+        `  node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`,
+    );
+  }
+  return value;
+};
+
+const ACCESS_TOKEN_SECRET = requireSecret('ACCESS_TOKEN_SECRET');
+const REFRESH_TOKEN_SECRET = requireSecret('REFRESH_TOKEN_SECRET');
 
 /**
  * Generate an access token for a user

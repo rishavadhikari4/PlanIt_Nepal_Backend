@@ -13,6 +13,17 @@ const fileFilter = (req, file, cb) => {
     cb(new Error('Only images are allowed'));
 };
 
-const upload = multer({ storage, fileFilter });
+/* memoryStorage with no limit means one request can hold the whole file in
+   RAM — a handful of large uploads is enough to exhaust the process. */
+const upload = multer({
+    storage,
+    fileFilter,
+    limits: {
+        fileSize: 5 * 1024 * 1024,  // 5MB, matching the client-side check
+        files: 10,
+        fields: 20,
+        parts: 30,
+    },
+});
 
 module.exports = upload;

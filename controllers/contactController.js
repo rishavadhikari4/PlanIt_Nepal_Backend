@@ -1,4 +1,5 @@
 const Contact = require("../models/Contact");
+const { containsFilter } = require('../middleware/sanitize');
 
 exports.postContactForm = async (req, res) => {
   const { name, email, phone, subject, budget, message } = req.body;
@@ -38,7 +39,7 @@ exports.getContactForms = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
     let filter = {};
     if (subject) {
-      filter.subject = { $regex: subject, $options: "i" };
+      filter.subject = containsFilter(subject);
     }
     const contacts = await Contact.find(filter)
       .sort({ createdAt: -1 })

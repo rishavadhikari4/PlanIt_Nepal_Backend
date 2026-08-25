@@ -1,6 +1,7 @@
 const Studio = require('../models/studio');
 const Venue = require('../models/Venue');
 const Cuisine = require('../models/Cuisine');
+const { containsFilter } = require('../middleware/sanitize');
 
 exports.getWeddingPackageRecommendation = async (req, res) => {
   try {
@@ -20,7 +21,7 @@ exports.getWeddingPackageRecommendation = async (req, res) => {
       food: parseFloat(foodBudget)
     };
     let venueFilter = { price: { $lte: budgetDistribution.venue * 1.1 } };
-    if (location) venueFilter.location = { $regex: location, $options: 'i' };
+    if (location) venueFilter.location = containsFilter(location);
     if (guestCount) {
       const guestCountNum = parseInt(guestCount);
       if (!isNaN(guestCountNum)) {
@@ -30,14 +31,14 @@ exports.getWeddingPackageRecommendation = async (req, res) => {
           { capacity: { $regex: `^[${Math.floor(guestCountNum/100) + 1}-9][0-9]{2,}`, $options: 'i' } }
         ];
       } else {
-        venueFilter.capacity = { $regex: guestCount, $options: 'i' };
+        venueFilter.capacity = containsFilter(guestCount);
       }
     }
     const venues = await Venue.find(venueFilter).lean();
     const recommendedVenue = await calculateVenueScore(venues, budgetDistribution.venue, guestCount);
 
     let studioFilter = { price: { $lte: budgetDistribution.studio * 1.1 } };
-    if (location) studioFilter.location = { $regex: location, $options: 'i' };
+    if (location) studioFilter.location = containsFilter(location);
     if (preferredServices) {
       const serviceArray = preferredServices.split(',').map(s => s.trim());
       studioFilter.services = { $in: serviceArray };
