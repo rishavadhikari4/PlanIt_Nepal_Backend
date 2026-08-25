@@ -166,6 +166,17 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  /* When each automated letter went out. Held on the order because "has this
+     been sent?" is a property of the order, and a null means "not yet" — which
+     is what the reminder sweep queries on. */
+  balanceReminderSentAt: {
+    type: Date,
+    default: null
+  },
+  reviewRequestSentAt: {
+    type: Date,
+    default: null
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 
@@ -186,6 +197,11 @@ orderSchema.index({ "items.itemId": 1, "items.itemType": 1, "items.bookingStatus
 /* Availability search sweeps every live booking that overlaps a date window,
    across the whole catalogue, so it needs the dates leading. */
 orderSchema.index({ "items.bookedFrom": 1, "items.bookedTill": 1, "items.itemType": 1 });
+/* The reminder sweeps look for orders that have not had a letter yet. Sparse
+   on null would not help here — null is exactly the value being searched
+   for — so these are plain compound indexes on status plus the marker. */
+orderSchema.index({ paymentStatus: 1, balanceReminderSentAt: 1 });
+orderSchema.index({ status: 1, reviewRequestSentAt: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;

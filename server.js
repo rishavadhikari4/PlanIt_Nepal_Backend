@@ -94,6 +94,26 @@ const sweepPendingPayments = async () => {
 // unref() so the timer never keeps the process alive on its own.
 setInterval(sweepPendingPayments, RECONCILE_EVERY_MS).unref();
 
+/* Balance-due and how-was-it letters. Hourly is often enough for something
+   measured in days, and both are found by query, so a restart loses nothing. */
+const { runReminders } = require('./utils/reminders');
+const REMIND_EVERY_MS = 60 * 60 * 1000;
+
+const sweepReminders = async () => {
+  try {
+    const sent = await runReminders();
+    if (sent.balanceReminders || sent.reviewRequests) {
+      console.log(
+        `Reminders sent — balance due: ${sent.balanceReminders}, review requests: ${sent.reviewRequests}`,
+      );
+    }
+  } catch (error) {
+    console.error('Reminder sweep failed:', error.message);
+  }
+};
+
+setInterval(sweepReminders, REMIND_EVERY_MS).unref();
+
 if (isProduction) {
     app.listen(PORT, () => {
         console.log(`Production server running on port ${PORT}`);

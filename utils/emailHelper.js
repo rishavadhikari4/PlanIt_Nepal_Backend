@@ -516,8 +516,50 @@ PlanIt_Nepal Team`
     }
 };
 
+/**
+ * Reminds a customer that the balance is due before their event, or asks how
+ * it went afterwards. One function because the two are the same letter with a
+ * different body, and splitting them duplicated the transport setup.
+ */
+const sendOrderReminderEmail = async ({ order, user, kind }) => {
+    const transporter = await createTransporter();
+
+    const rs = (n) => `Rs ${Number(n || 0).toLocaleString('en-IN')}`;
+    const reference = String(order._id).slice(-8).toUpperCase();
+
+    const copy = kind === 'balance_due'
+        ? {
+            subject: `Balance due on your booking — PlanIt Nepal (#${reference})`,
+            heading: 'Your event is coming up',
+            body: `Your booking #${reference} has ${rs(order.remainingAmount)} still to pay. `
+                + `You can settle it from your profile, or hand it over on the day.`,
+        }
+        : {
+            subject: `How was your event? — PlanIt Nepal (#${reference})`,
+            heading: 'How did it go?',
+            body: `We hope your event went well. If you have a minute, tell us how the venue, `
+                + `the food and the studio did — it is the only thing the next family has to go on.`,
+        };
+
+    return transporter.sendMail({
+        from: process.env.USER_EMAIL,
+        to: user.email,
+        subject: copy.subject,
+        text: `Hello ${user.name},\n\n${copy.body}\n\n— PlanIt Nepal, Kathmandu`,
+        html: `
+            <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#241C18;max-width:560px">
+                <p style="font-size:19px;font-weight:600;margin:0 0 14px">${copy.heading}</p>
+                <p>Hello ${user.name},</p>
+                <p>${copy.body}</p>
+                <p style="margin-top:28px;color:#695D55">— PlanIt Nepal, Kathmandu</p>
+            </div>
+        `,
+    });
+};
+
 module.exports = {
     sendOrderConfirmationEmail,
     sendPasswordResetEmail,
-    sendVerificationOTP
+    sendVerificationOTP,
+    sendOrderReminderEmail
 };
