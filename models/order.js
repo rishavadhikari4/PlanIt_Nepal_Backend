@@ -78,6 +78,34 @@ const orderSchema = new mongoose.Schema({
     enum: ['pending', 'partial', 'completed'],
     default: 'pending'
   },
+  // Which gateway the customer was sent to for this order.
+  paymentProvider: {
+    type: String,
+    enum: ['khalti', 'fonepay', 'cash', null],
+    default: null
+  },
+  // How much of the total this payment attempt covers.
+  paymentAmountType: {
+    type: String,
+    enum: ['advance_payment', 'full_payment', null],
+    default: null
+  },
+  // Our reference handed to the gateway: Khalti's pidx, or the Fonepay PRN.
+  paymentReference: {
+    type: String,
+    default: null,
+    index: true
+  },
+  // The gateway's own transaction id, returned once the payment clears.
+  paymentTransactionId: {
+    type: String,
+    default: null
+  },
+  paidAt: {
+    type: Date,
+    default: null
+  },
+  // Retained so existing Stripe-era orders still render their payment id.
   stripePaymentIntentId: {
     type: String,
     default: null

@@ -10,15 +10,12 @@ require('./config/passportConfig');
 dotenv.config();
 
 const routes = require('./routes/index');
-const { handleStripeWebhook } = require('./controllers/paymentController'); 
 
 const app = express();
 
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development';
-
-app.post('/api/payments/webhook', express.raw({type: 'application/json'}), handleStripeWebhook);
 
 app.use(express.json());
 const allowedOrigins = [
