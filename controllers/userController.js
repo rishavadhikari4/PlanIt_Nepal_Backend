@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require("../models/User");
 const { uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinaryConfig");
 const bcrypt = require("bcryptjs");
@@ -233,4 +234,263 @@ exports.getUserForAdminInspection = async (req, res) => {
         console.error('Error in admin user inspection:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
+};
+/* ------------------------------------------------------------------ *
+ * Shortlist
+ *
+ * The heart on every listing used to be local component state — it lit up,
+ * and nothing anywhere recorded it. These three handlers are the whole of it:
+ * read the list, toggle one item, and that is all the UI needs.
+ * ------------------------------------------------------------------ */
+
+const Venue = require('../models/Venue');
+const Studio = require('../models/studio');
+const Cuisine = require('../models/Cuisine');
+
+const FAVORITE_TYPES = ['venue', 'studio', 'dish'];
+
+/**
+ * Reads the shortlist and resolves each entry to the thing it points at, in
+ * one query per type rather than one per entry. Entries whose item has since
+ * been deleted are dropped from the response — and from the stored list, so
+ * the shortlist heals itself instead of accumulating dead references.
+ */
+exports.getFavorites = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('favorites').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const favorites = user.favorites || [];
+    const idsByType = FAVORITE_TYPES.reduce((acc, type) => {
+      acc[type] = favorites.filter((f) => f.itemType === type).map((f) => f.itemId);
+      return acc;
+    }, {});
+
+    const [venues, studios, dishCategories] = await Promise.all([
+      idsByType.venue.length
+        ? Venue.find({ _id: { $in: idsByType.venue } })
+            .select('name location price capacity rating venueImage')
+            .lean()
+        : [],
+      idsByType.studio.length
+        ? Studio.find({ _id: { $in: idsByType.studio } })
+            .select('name location price rating studioImage services')
+            .lean()
+        : [],
+      // Dishes are subdocuments, so they are reached through their category.
+      idsByType.dish.length
+        ? Cuisine.find({ 'dishes._id': { $in: idsByType.dish } })
+            .select('category dishes')
+            .lean()
+        : [],
+    ]);
+
+    const dishes = [];
+    for (const category of dishCategories) {
+      for (const dish of category.dishes || []) {
+        if (idsByType.dish.some((id) => String(id) === String(dish._id))) {
+          dishes.push({ ...dish, category: category.category });
+        }
+      }
+    }
+
+    const found = new Map();
+    venues.forEach((v) => found.set(`venue:${v._id}`, { ...v, itemType: 'venue' }));
+    studios.forEach((s) => found.set(`studio:${s._id}`, { ...s, itemType: 'studio' }));
+    dishes.forEach((d) => found.set(`dish:${d._id}`, { ...d, itemType: 'dish' }));
+
+    const items = [];
+    const live = [];
+    for (const favorite of favorites) {
+      const hit = found.get(`${favorite.itemType}:${favorite.itemId}`);
+      if (!hit) continue;
+      items.push({ ...hit, addedAt: favorite.addedAt });
+      live.push(favorite);
+    }
+
+    // Prune references to deleted items, but only when something actually went.
+    if (live.length !== favorites.length) {
+      await User.updateOne({ _id: req.user.id }, { $set: { favorites: live } });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Shortlist fetched successfully',
+      data: { favorites: items },
+    });
+  } catch (error) {
+    console.error('Error fetching shortlist:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Toggles one item and reports which way it went, so the button can settle on
+ * the server's answer rather than assuming its own optimistic flip was right.
+ */
+exports.toggleFavorite = async (req, res) => {
+  try {
+    const { itemType, itemId } = req.body;
+
+    if (!FAVORITE_TYPES.includes(itemType)) {
+      return res.status(400).json({
+        success: false,
+        message: `itemType must be one of: ${FAVORITE_TYPES.join(', ')}`,
+      });
+    }
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ success: false, message: 'A valid itemId is required' });
+    }
+
+    const user = await User.findById(req.user.id).select('favorites');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const index = (user.favorites || []).findIndex(
+      (f) => f.itemType === itemType && String(f.itemId) === String(itemId),
+    );
+
+    let favorited;
+    if (index === -1) {
+      // Cap the list so a script cannot grow one user document without bound.
+      if (user.favorites.length >= 200) {
+        return res.status(400).json({
+          success: false,
+          message: 'Your shortlist is full. Remove something before adding more.',
+        });
+      }
+      user.favorites.push({ itemType, itemId });
+      favorited = true;
+    } else {
+      user.favorites.splice(index, 1);
+      favorited = false;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: favorited ? 'Added to your shortlist' : 'Removed from your shortlist',
+      data: { favorited, count: user.favorites.length },
+    });
+  } catch (error) {
+    console.error('Error updating shortlist:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/** Just the ids, for painting hearts across a listing page in one request. */
+exports.getFavoriteIds = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('favorites').lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Shortlist ids fetched successfully',
+      data: {
+        ids: (user?.favorites || []).map((f) => `${f.itemType}:${f.itemId}`),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching shortlist ids:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/* ------------------------------------------------------------------ *
+ * Cart
+ *
+ * The cart lived in sessionStorage: close the tab and a half-built plan worth
+ * several lakh was gone, and it was invisible on the phone the customer built
+ * half of it on.
+ *
+ * Held as a draft, not an order. Prices and names are re-read from the
+ * catalogue when the order is placed, so nothing here can pin an old price.
+ * ------------------------------------------------------------------ */
+
+const MAX_CART_ITEMS = 60;
+
+/* Only the fields the cart actually needs. Whatever else the client sends is
+   dropped rather than stored — the cart is not a place to park arbitrary
+   documents on a user record. */
+const cleanCartItem = (item) => {
+  if (!item || typeof item !== 'object') return null;
+  if (!item._id || !item.type) return null;
+
+  const out = {
+    _id: String(item._id).slice(0, 64),
+    type: String(item.type).slice(0, 16),
+    name: String(item.name || '').slice(0, 200),
+    price: Number(item.price) || 0,
+    quantity: Math.max(1, Math.min(100000, parseInt(item.quantity, 10) || 1)),
+  };
+  if (item.image) out.image = String(item.image).slice(0, 500);
+  if (item.category) out.category = String(item.category).slice(0, 120);
+  if (item.capacity) out.capacity = Number(item.capacity) || undefined;
+  if (item.bookingDates?.from && item.bookingDates?.till) {
+    out.bookingDates = {
+      from: new Date(item.bookingDates.from).toISOString(),
+      till: new Date(item.bookingDates.till).toISOString(),
+    };
+  }
+  return out;
+};
+
+exports.getCart = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('cart').lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Cart fetched successfully',
+      data: {
+        cart: user?.cart || { items: [], guestCount: null, updatedAt: null },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching cart:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Replaces the stored cart wholesale.
+ *
+ * The client owns cart state — it is edited far too often to round-trip every
+ * change — so this is a save, not a merge. The client decides what the cart
+ * is; this remembers it.
+ */
+exports.saveCart = async (req, res) => {
+  try {
+    const incoming = Array.isArray(req.body.items) ? req.body.items : [];
+    if (incoming.length > MAX_CART_ITEMS) {
+      return res.status(400).json({
+        success: false,
+        message: `A cart can hold at most ${MAX_CART_ITEMS} items.`,
+      });
+    }
+
+    const items = incoming.map(cleanCartItem).filter(Boolean);
+
+    let guestCount = null;
+    if (req.body.guestCount) {
+      const n = parseInt(req.body.guestCount, 10);
+      if (Number.isInteger(n) && n > 0 && n <= 100000) guestCount = n;
+    }
+
+    await User.updateOne(
+      { _id: req.user.id },
+      { $set: { cart: { items, guestCount, updatedAt: new Date() } } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cart saved',
+      data: { count: items.length },
+    });
+  } catch (error) {
+    console.error('Error saving cart:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 };

@@ -17,6 +17,12 @@ router.get('/verified', reviewController.getVerifiedReviews);
 // Get unverified reviews (specific route - must come before parameter routes)
 router.get('/un-verified', authMiddleware, authorizeRoles("customer"), reviewController.getUnverifiedReviews);
 
+/* What one listing's customers said, and its rating breakdown. Public. */
+router.get('/item/:itemType/:itemId', reviewController.getItemReviews);
+
+/* What this customer has been to and can now write about. */
+router.get('/reviewable', authMiddleware, authorizeRoles("customer"), reviewController.getReviewableItems);
+
 // Toggle review verification status (parameter route)
 router.patch('/:reviewId/verified', authMiddleware, authorizeRoles("admin"), reviewController.toggleVerified);
 

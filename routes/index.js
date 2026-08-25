@@ -13,6 +13,7 @@ const studioRoutes = require("./studioRoutes");
 const paymentRoutes = require("./paymentRoutes"); // Add payment routes
 const queueRoutes = require('./queueRoutes');
 const recommendRoutes = require('./recommendRoutes');
+const availabilityRoutes = require('./availabilityRoutes');
 const{generalLimiter} = require("../utils/rateLimitters");
 
 // Routes WITHOUT rate limiting (they have their own specific limiters)
@@ -29,6 +30,7 @@ router.use('/reviews', generalLimiter, reviewRoutes);
 router.use('/studios', generalLimiter, studioRoutes);
 router.use('/payments', paymentRoutes); 
 router.use('/recommend', generalLimiter, recommendRoutes);
-router.use('/api/admin', queueRoutes);
+router.use('/availability', generalLimiter, availabilityRoutes);
+router.use('/admin', generalLimiter, queueRoutes);
 
 module.exports = router;

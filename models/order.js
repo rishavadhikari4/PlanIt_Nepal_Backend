@@ -42,6 +42,18 @@ const orderItemSchema = new mongoose.Schema({
         default: function() {
             return (this.itemType === 'venue' || this.itemType === 'studio') ? 'pending' : undefined;
         }
+    },
+    /* Why one line was cancelled while the rest of the order stands — a venue
+       can fall through without the studio going with it. */
+    statusNote: {
+        type: String,
+        trim: true,
+        maxlength: 300,
+        default: null
+    },
+    statusChangedAt: {
+        type: Date,
+        default: null
     }
 });
 
@@ -60,6 +72,50 @@ const orderSchema = new mongoose.Schema({
   totalAmount: {
     type: Number,
     required: true
+  },
+  /* How many people are being fed. Catering is priced per plate, so this is
+     the multiplier for every dish on the order — it is held once here rather
+     than typed into each line. */
+  guestCount: {
+    type: Number,
+    min: 1,
+    default: null
+  },
+  /* Set when the order is cancelled, so the reason survives the status. */
+  cancelledAt: {
+    type: Date,
+    default: null
+  },
+  cancelledBy: {
+    type: String,
+    enum: ['customer', 'admin', null],
+    default: null
+  },
+  cancellationReason: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    default: null
+  },
+  /* Money returned after a cancellation. `refundedAmount` never exceeds
+     paidAmount; the controller is the only thing that writes it. */
+  refundedAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  refundStatus: {
+    type: String,
+    enum: ['none', 'due', 'processing', 'refunded'],
+    default: 'none'
+  },
+  refundedAt: {
+    type: Date,
+    default: null
+  },
+  refundReference: {
+    type: String,
+    default: null
   },
   paymentType: {
     type: String,
@@ -110,6 +166,17 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  /* When each automated letter went out. Held on the order because "has this
+     been sent?" is a property of the order, and a null means "not yet" — which
+     is what the reminder sweep queries on. */
+  balanceReminderSentAt: {
+    type: Date,
+    default: null
+  },
+  reviewRequestSentAt: {
+    type: Date,
+    default: null
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 
@@ -127,6 +194,14 @@ orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ "items.itemId": 1, "items.itemType": 1, "items.bookingStatus": 1 });
+/* Availability search sweeps every live booking that overlaps a date window,
+   across the whole catalogue, so it needs the dates leading. */
+orderSchema.index({ "items.bookedFrom": 1, "items.bookedTill": 1, "items.itemType": 1 });
+/* The reminder sweeps look for orders that have not had a letter yet. Sparse
+   on null would not help here — null is exactly the value being searched
+   for — so these are plain compound indexes on status plus the marker. */
+orderSchema.index({ paymentStatus: 1, balanceReminderSentAt: 1 });
+orderSchema.index({ status: 1, reviewRequestSentAt: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;

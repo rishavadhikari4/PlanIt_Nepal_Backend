@@ -15,6 +15,12 @@ router.get('/form', readLimiter,authMiddleware, authorizeRoles("admin"), contact
 //ADMIN ROUTES (Authentication + Admin role required)
 router.get('/form/:contactId',readLimiter,authMiddleware,authorizeRoles("admin"),contactController.getContactFormById);
 
+// Move an enquiry through the queue, or leave a staff-only note.
+router.patch('/form/:contactId', authMiddleware, authorizeRoles("admin"), contactController.updateContactStatus);
+
+// Reply by email, and record what was said.
+router.post('/form/:contactId/reply', authMiddleware, authorizeRoles("admin"), contactController.replyToContact);
+
 // ADMIN ROUTES (Authentication + Admin role required)
 router.delete('/form/:contactId',authMiddleware,authorizeRoles("admin"),contactController.deleteContactForm);
 

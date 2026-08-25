@@ -69,6 +69,51 @@ connectDB();
 
 app.use('/api', routes);
 
+/* Settle payments the gateways never told us about.
+   Webhooks are the primary path, but a merchant account can go live before
+   its callback URL is registered, and a webhook can simply be lost. Sweeping
+   every fifteen minutes means the worst case for a customer whose tab closed
+   mid-payment is a short wait, not a booking that never happened. */
+const { reconcilePending } = require('./controllers/paymentController');
+const RECONCILE_EVERY_MS = 15 * 60 * 1000;
+
+const sweepPendingPayments = async () => {
+  try {
+    const report = await reconcilePending();
+    if (report.settled.length) {
+      console.log(`Reconciliation settled ${report.settled.length} abandoned payment(s)`);
+    }
+    if (report.unresolved.length) {
+      console.warn(`Reconciliation left ${report.unresolved.length} payment(s) for manual review`);
+    }
+  } catch (error) {
+    console.error('Payment reconciliation sweep failed:', error.message);
+  }
+};
+
+// unref() so the timer never keeps the process alive on its own.
+setInterval(sweepPendingPayments, RECONCILE_EVERY_MS).unref();
+
+/* Balance-due and how-was-it letters. Hourly is often enough for something
+   measured in days, and both are found by query, so a restart loses nothing. */
+const { runReminders } = require('./utils/reminders');
+const REMIND_EVERY_MS = 60 * 60 * 1000;
+
+const sweepReminders = async () => {
+  try {
+    const sent = await runReminders();
+    if (sent.balanceReminders || sent.reviewRequests) {
+      console.log(
+        `Reminders sent — balance due: ${sent.balanceReminders}, review requests: ${sent.reviewRequests}`,
+      );
+    }
+  } catch (error) {
+    console.error('Reminder sweep failed:', error.message);
+  }
+};
+
+setInterval(sweepReminders, REMIND_EVERY_MS).unref();
+
 if (isProduction) {
     app.listen(PORT, () => {
         console.log(`Production server running on port ${PORT}`);

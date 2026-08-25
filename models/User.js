@@ -61,6 +61,46 @@ const userSchema = new mongoose.Schema({
     },
     lockUntil: {
         type: Date
+    },
+    /* The shortlist behind the heart on every listing. Stored as a typed
+       reference rather than three arrays, so one query returns the lot and a
+       new bookable type costs nothing. */
+    favorites: [{
+        itemType: {
+            type: String,
+            enum: ['venue', 'studio', 'dish'],
+            required: true
+        },
+        itemId: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true
+        },
+        addedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    /* The cart, so it survives closing the tab and follows the customer to
+       their phone. It lived in sessionStorage, which meant a half-built plan
+       worth several lakh vanished the moment the tab closed.
+
+       Stored loosely on purpose: this is a draft, not an order. Prices and
+       names are re-read from the catalogue when the order is actually placed,
+       so a stale cart cannot lock in an old price. */
+    cart: {
+        items: {
+            type: [mongoose.Schema.Types.Mixed],
+            default: []
+        },
+        guestCount: {
+            type: Number,
+            min: 1,
+            default: null
+        },
+        updatedAt: {
+            type: Date,
+            default: Date.now
+        }
     }
 }, { timestamps: true });
 
@@ -70,6 +110,8 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ role: 1 });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 userSchema.index({ refreshToken: 1 }, { sparse: true });
+/* "Is this one shortlisted?" runs on every listing card the user sees. */
+userSchema.index({ "favorites.itemId": 1, "favorites.itemType": 1 });
 
 const User = mongoose.model('User', userSchema);
 

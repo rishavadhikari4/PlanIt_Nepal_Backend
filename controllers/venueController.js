@@ -74,7 +74,12 @@ exports.getAllVenues = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
-        const sortField = req.query.sortField || 'createdAt';
+        /* Sorting is whitelisted: an arbitrary field name would sort on
+           something unindexed and scan the collection. `orderedCount` is
+           what powers "most booked", which the schema has always carried
+           and nothing ever read. */
+        const SORTABLE = ['createdAt', 'price', 'rating', 'name', 'orderedCount', 'capacity'];
+        const sortField = SORTABLE.includes(req.query.sortField) ? req.query.sortField : 'createdAt';
         const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
         const serviceFilter = req.query.service;
         const filter = {};
