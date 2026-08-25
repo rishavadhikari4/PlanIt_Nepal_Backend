@@ -61,6 +61,14 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  /* How many people are being fed. Catering is priced per plate, so this is
+     the multiplier for every dish on the order — it is held once here rather
+     than typed into each line. */
+  guestCount: {
+    type: Number,
+    min: 1,
+    default: null
+  },
   paymentType: {
     type: String,
     enum: ['cash_after_service', 'advance_payment'],

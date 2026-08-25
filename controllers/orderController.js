@@ -8,6 +8,21 @@ exports.addOrder = async (req, res) => {
     const { items } = req.body;
     const userId = req.user.id;
 
+    /* Catering is priced per plate, so the headcount is the multiplier for
+       every dish on the order. It is asked once and applied here rather than
+       typed into each line, which is what made the old totals wrong whenever
+       someone changed the guest list. */
+    let guestCount = null;
+    if (req.body.guestCount !== undefined && req.body.guestCount !== null && req.body.guestCount !== '') {
+      guestCount = Number(req.body.guestCount);
+      if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 100000) {
+        return res.status(400).json({
+          success: false,
+          message: "Guest count must be a whole number of at least 1."
+        });
+      }
+    }
+
     if (req.user.role === 'admin') {
       return res.status(403).json({
         success: false,
@@ -125,6 +140,12 @@ exports.addOrder = async (req, res) => {
             message: "Venue not found"
           });
         }
+        if (guestCount && item.capacity && guestCount > item.capacity) {
+          return res.status(400).json({
+            success: false,
+            message: `${item.name} holds ${item.capacity} guests. Lower the headcount or pick a larger room.`
+          });
+        }
         venuesToUpdate.push(itemId);
       } else if (itemType === 'studio') {
         item = await Studio.findById(itemId);
@@ -144,7 +165,7 @@ exports.addOrder = async (req, res) => {
             message: "Dish not found"
           });
         }
-        dishesToUpdate.push({ dishId: itemId, quantity: quantity });
+        dishesToUpdate.push({ dishId: itemId, quantity: guestCount || quantity });
       } else {
         return res.status(400).json({
           success: false,
@@ -165,13 +186,17 @@ exports.addOrder = async (req, res) => {
           message: `${itemType} has invalid price format`
         });
       }
+      // One plate per guest. Without a headcount the cart's own count stands,
+      // so orders placed before this existed still price the same way.
+      const lineQuantity = itemType === 'dish' && guestCount ? guestCount : quantity;
+
       const orderItem = {
         itemId: item._id,
         itemType: itemType,
         name: item.name,
         price: itemPrice,
         image: item.venueImage || item.studioImage || item.image,
-        quantity: quantity
+        quantity: lineQuantity
       };
       if (itemType === 'venue' || itemType === 'studio') {
         orderItem.bookedFrom = bookedFrom ? new Date(bookedFrom) : null;
@@ -179,7 +204,7 @@ exports.addOrder = async (req, res) => {
         orderItem.bookingStatus = 'pending';
       }
       orderItems.push(orderItem);
-      totalAmount += itemPrice * quantity;
+      totalAmount += itemPrice * lineQuantity;
     }
 
     if (isNaN(totalAmount)) {
@@ -194,6 +219,7 @@ exports.addOrder = async (req, res) => {
       status: "draft",
       items: orderItems,
       totalAmount,
+      guestCount,
       paymentType: null,
       paymentStatus: 'pending',
       paidAmount: 0,
