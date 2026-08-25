@@ -125,7 +125,10 @@ exports.getAllStudios = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const sortField = req.query.sortField || 'createdAt';
+    /* Whitelisted for the same reason as venues: an arbitrary field sorts on
+       something unindexed. `orderedCount` powers "most booked". */
+    const SORTABLE = ['createdAt', 'price', 'rating', 'name', 'orderedCount'];
+    const sortField = SORTABLE.includes(req.query.sortField) ? req.query.sortField : 'createdAt';
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
     const serviceFilter = req.query.service;
     const filter = {};
