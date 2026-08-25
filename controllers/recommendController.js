@@ -85,7 +85,7 @@ exports.getWeddingPackageRecommendation = async (req, res) => {
     if (venuePrice <= budgetDistribution.venue) insights.packageBenefits.push("Venue within allocated budget");
     if (studioPrice <= budgetDistribution.studio) insights.packageBenefits.push("Studio within allocated budget");
     if (dishesTotalPrice <= budgetDistribution.food) insights.packageBenefits.push("Food selection within allocated budget");
-    if (insights.totalSavings > 0) insights.packageBenefits.push(`Total savings: ₹${insights.totalSavings.toLocaleString()}`);
+    if (insights.totalSavings > 0) insights.packageBenefits.push(`Total savings: Rs ${insights.totalSavings.toLocaleString('en-IN')}`);
     if (recommendedVenue && recommendedVenue.rating >= 4.0) insights.packageBenefits.push("High-rated venue selected");
     if (recommendedStudio && recommendedStudio.rating >= 4.0) insights.packageBenefits.push("Professional photography service");
     if (recommendedVenue && location && recommendedVenue.location.toLowerCase().includes(location.toLowerCase())) insights.packageBenefits.push(`Venue matches your preferred location: ${location}`);
@@ -97,7 +97,7 @@ exports.getWeddingPackageRecommendation = async (req, res) => {
       if (guestCount) suggestions.push(`guest count: ${guestCount}`);
       if (location) suggestions.push(`location: ${location}`);
       const criteriaText = suggestions.length > 0 ? ` matching ${suggestions.join(' and ')}` : '';
-      insights.recommendations.push(`No venue found within ₹${budgetDistribution.venue.toLocaleString()} budget${criteriaText}. Consider increasing venue budget or adjusting criteria.`);
+      insights.recommendations.push(`No venue found within Rs ${budgetDistribution.venue.toLocaleString()} budget${criteriaText}. Consider increasing venue budget or adjusting criteria.`);
     } else if (insights.budgetBreakdown.venue.remaining > budgetDistribution.venue * 0.2) {
       insights.recommendations.push("Consider upgrading to a premium venue option");
     }
@@ -106,12 +106,12 @@ exports.getWeddingPackageRecommendation = async (req, res) => {
       if (location) suggestions.push(`location: ${location}`);
       if (preferredServices) suggestions.push(`services: ${preferredServices}`);
       const criteriaText = suggestions.length > 0 ? ` matching ${suggestions.join(' and ')}` : '';
-      insights.recommendations.push(`No studio found within ₹${budgetDistribution.studio.toLocaleString()} budget${criteriaText}. Consider increasing studio budget or adjusting criteria.`);
+      insights.recommendations.push(`No studio found within Rs ${budgetDistribution.studio.toLocaleString()} budget${criteriaText}. Consider increasing studio budget or adjusting criteria.`);
     } else if (insights.budgetBreakdown.studio.remaining > budgetDistribution.studio * 0.2) {
       insights.recommendations.push("Consider adding more photography services");
     }
     if (recommendedDishes.length === 0) {
-      insights.recommendations.push(`No dishes found within ₹${budgetDistribution.food.toLocaleString()} budget. Consider increasing food budget.`);
+      insights.recommendations.push(`No dishes found within Rs ${budgetDistribution.food.toLocaleString()} budget. Consider increasing food budget.`);
     } else if (insights.budgetBreakdown.food.remaining > budgetDistribution.food * 0.2) {
       insights.recommendations.push("Consider adding more food variety or premium dishes");
     }
@@ -277,3 +277,221 @@ function calculateOverallPackageScore(venue, studio, dishes) {
   }
   return components > 0 ? Math.round(totalScore) : 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Occasions
+ *
+ * The recommender knew one event: a wedding. The site sells six, and the
+ * other five fell through — a pasni is eighty people and no photographer,
+ * a corporate dinner has no mehendi menu, and neither wants a wedding's
+ * budget split.
+ *
+ * What actually differs between them is here as data. The scoring functions
+ * below are shared, because how you pick a good venue does not change with
+ * the occasion; only what you are looking for does.
+ * ------------------------------------------------------------------ */
+
+const OCCASIONS = {
+  wedding: {
+    label: 'Wedding',
+    // Where the money goes. Catering dominates because it scales with the
+    // guest list and everything else does not.
+    split: { venue: 0.35, food: 0.5, studio: 0.15 },
+    typicalGuests: 300,
+    studio: 'expected',
+    dishCategories: null, // everything is fair game
+    note: 'The full day — bibaha, reception, and the bhoj.',
+  },
+  bratabandha: {
+    label: 'Bratabandha',
+    split: { venue: 0.3, food: 0.55, studio: 0.15 },
+    typicalGuests: 150,
+    studio: 'expected',
+    dishCategories: null,
+    note: 'The ceremony in the morning, the bhoj after it.',
+  },
+  pasni: {
+    label: 'Pasni',
+    split: { venue: 0.3, food: 0.6, studio: 0.1 },
+    typicalGuests: 80,
+    studio: 'optional',
+    dishCategories: null,
+    note: 'Rice-feeding, kept small and kept warm.',
+  },
+  mehendi: {
+    label: 'Mehendi & Sangeet',
+    // An evening event: less food per head, more room and more camera.
+    split: { venue: 0.4, food: 0.4, studio: 0.2 },
+    typicalGuests: 120,
+    studio: 'expected',
+    dishCategories: null,
+    note: 'The loud night before the quiet morning.',
+  },
+  corporate: {
+    label: 'Corporate',
+    split: { venue: 0.45, food: 0.45, studio: 0.1 },
+    typicalGuests: 200,
+    studio: 'optional',
+    dishCategories: null,
+    note: 'Conferences, launches and annual dinners.',
+  },
+  anniversary: {
+    label: 'Anniversary',
+    split: { venue: 0.35, food: 0.5, studio: 0.15 },
+    typicalGuests: 60,
+    studio: 'optional',
+    dishCategories: null,
+    note: 'Milestones that deserve the good room.',
+  },
+};
+
+exports.listOccasions = (_req, res) =>
+  res.status(200).json({
+    success: true,
+    message: 'Occasions fetched successfully',
+    data: {
+      occasions: Object.entries(OCCASIONS).map(([id, o]) => ({
+        id,
+        label: o.label,
+        note: o.note,
+        typicalGuests: o.typicalGuests,
+        studio: o.studio,
+      })),
+    },
+  });
+
+/**
+ * GET /api/recommend/package?occasion=pasni&budget=250000&guests=80
+ *
+ * One total budget and a headcount, rather than three budgets the customer
+ * has to invent. The split comes from the occasion, and because catering is
+ * priced per plate, the food budget is checked against the headcount rather
+ * than a flat number — the mistake the wedding endpoint makes.
+ */
+exports.getOccasionPackage = async (req, res) => {
+  try {
+    const occasionId = String(req.query.occasion || 'wedding').toLowerCase();
+    const occasion = OCCASIONS[occasionId];
+    if (!occasion) {
+      return res.status(400).json({
+        success: false,
+        message: `Unknown occasion. Choose one of: ${Object.keys(OCCASIONS).join(', ')}`,
+      });
+    }
+
+    const budget = Number(req.query.budget);
+    if (!Number.isFinite(budget) || budget < 10000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Give a total budget of at least Rs 10,000.',
+      });
+    }
+
+    const guests = Number(req.query.guests) || occasion.typicalGuests;
+    if (!Number.isInteger(guests) || guests < 1 || guests > 100000) {
+      return res.status(400).json({ success: false, message: 'Guest count must be a whole number.' });
+    }
+
+    const { location, skipStudio } = req.query;
+    const wantsStudio = occasion.studio !== 'none' && String(skipStudio) !== 'true';
+
+    /* When the studio is dropped, its share is not lost — it goes back to the
+       two things that are still happening, in their existing proportion. */
+    let split = { ...occasion.split };
+    if (!wantsStudio) {
+      const freed = split.studio;
+      const rest = split.venue + split.food;
+      split = {
+        venue: split.venue + (freed * split.venue) / rest,
+        food: split.food + (freed * split.food) / rest,
+        studio: 0,
+      };
+    }
+
+    const budgets = {
+      venue: Math.round(budget * split.venue),
+      food: Math.round(budget * split.food),
+      studio: Math.round(budget * split.studio),
+    };
+
+    // Per plate, which is how catering is actually sold.
+    const perPlate = Math.floor(budgets.food / guests);
+
+    const venueFilter = { price: { $lte: budgets.venue * 1.1 } };
+    if (location) venueFilter.location = containsFilter(location);
+    // The room has to hold the party. This is a number on the schema, so it
+    // is a comparison and not the regex guesswork the wedding endpoint does.
+    venueFilter.capacity = { $gte: guests };
+
+    const studioFilter = { price: { $lte: budgets.studio * 1.1 } };
+    if (location) studioFilter.location = containsFilter(location);
+
+    const [venues, studios, cuisines] = await Promise.all([
+      Venue.find(venueFilter).lean(),
+      wantsStudio ? Studio.find(studioFilter).lean() : [],
+      Cuisine.find().lean(),
+    ]);
+
+    const venue = await calculateVenueScore(venues, budgets.venue, guests);
+    const studio = wantsStudio ? await calculateStudioScore(studios, budgets.studio, location) : null;
+
+    /* Dishes are chosen against the per-plate figure, then costed for the
+       whole party — the number the customer actually pays. */
+    const dishes = await selectBestDishesFromCategories(cuisines, perPlate);
+    const platePrice = dishes.reduce((sum, d) => sum + d.price, 0);
+    const cateringTotal = platePrice * guests;
+
+    const venuePrice = venue?.price || 0;
+    const studioPrice = studio?.price || 0;
+    const total = venuePrice + studioPrice + cateringTotal;
+
+    const notes = [];
+    if (!venue) {
+      notes.push(
+        `Nothing holds ${guests} guests within Rs ${budgets.venue.toLocaleString('en-IN')}. Raise the budget or trim the guest list.`,
+      );
+    }
+    if (wantsStudio && !studio) {
+      notes.push(`No studio fits Rs ${budgets.studio.toLocaleString('en-IN')}. You can book the day without one.`);
+    }
+    if (!dishes.length) {
+      notes.push(`Rs ${perPlate.toLocaleString('en-IN')} a plate is below our cheapest set. Raise the food budget.`);
+    }
+    if (total > budget) {
+      notes.push(
+        `This comes to Rs ${(total - budget).toLocaleString('en-IN')} over your budget — mostly because catering is Rs ${platePrice.toLocaleString('en-IN')} a plate for ${guests} people.`,
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${occasion.label} package generated successfully`,
+      data: {
+        occasion: { id: occasionId, ...occasion },
+        guests,
+        budget,
+        split: budgets,
+        perPlate,
+        package: {
+          venue: venue || null,
+          studio: studio || null,
+          dishes,
+          platePrice,
+          cateringTotal,
+          totalPrice: total,
+        },
+        insights: {
+          withinBudget: total <= budget,
+          difference: budget - total,
+          utilization: budget ? Math.round((total / budget) * 100) : 0,
+          notes,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error building occasion package:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports.OCCASIONS = OCCASIONS;
