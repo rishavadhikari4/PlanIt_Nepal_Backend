@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require("../models/User");
 const { uploadToCloudinary, deleteFromCloudinary } = require("../config/cloudinaryConfig");
 const bcrypt = require("bcryptjs");
@@ -233,4 +234,167 @@ exports.getUserForAdminInspection = async (req, res) => {
         console.error('Error in admin user inspection:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
+};
+/* ------------------------------------------------------------------ *
+ * Shortlist
+ *
+ * The heart on every listing used to be local component state — it lit up,
+ * and nothing anywhere recorded it. These three handlers are the whole of it:
+ * read the list, toggle one item, and that is all the UI needs.
+ * ------------------------------------------------------------------ */
+
+const Venue = require('../models/Venue');
+const Studio = require('../models/studio');
+const Cuisine = require('../models/Cuisine');
+
+const FAVORITE_TYPES = ['venue', 'studio', 'dish'];
+
+/**
+ * Reads the shortlist and resolves each entry to the thing it points at, in
+ * one query per type rather than one per entry. Entries whose item has since
+ * been deleted are dropped from the response — and from the stored list, so
+ * the shortlist heals itself instead of accumulating dead references.
+ */
+exports.getFavorites = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('favorites').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const favorites = user.favorites || [];
+    const idsByType = FAVORITE_TYPES.reduce((acc, type) => {
+      acc[type] = favorites.filter((f) => f.itemType === type).map((f) => f.itemId);
+      return acc;
+    }, {});
+
+    const [venues, studios, dishCategories] = await Promise.all([
+      idsByType.venue.length
+        ? Venue.find({ _id: { $in: idsByType.venue } })
+            .select('name location price capacity rating venueImage')
+            .lean()
+        : [],
+      idsByType.studio.length
+        ? Studio.find({ _id: { $in: idsByType.studio } })
+            .select('name location price rating studioImage services')
+            .lean()
+        : [],
+      // Dishes are subdocuments, so they are reached through their category.
+      idsByType.dish.length
+        ? Cuisine.find({ 'dishes._id': { $in: idsByType.dish } })
+            .select('category dishes')
+            .lean()
+        : [],
+    ]);
+
+    const dishes = [];
+    for (const category of dishCategories) {
+      for (const dish of category.dishes || []) {
+        if (idsByType.dish.some((id) => String(id) === String(dish._id))) {
+          dishes.push({ ...dish, category: category.category });
+        }
+      }
+    }
+
+    const found = new Map();
+    venues.forEach((v) => found.set(`venue:${v._id}`, { ...v, itemType: 'venue' }));
+    studios.forEach((s) => found.set(`studio:${s._id}`, { ...s, itemType: 'studio' }));
+    dishes.forEach((d) => found.set(`dish:${d._id}`, { ...d, itemType: 'dish' }));
+
+    const items = [];
+    const live = [];
+    for (const favorite of favorites) {
+      const hit = found.get(`${favorite.itemType}:${favorite.itemId}`);
+      if (!hit) continue;
+      items.push({ ...hit, addedAt: favorite.addedAt });
+      live.push(favorite);
+    }
+
+    // Prune references to deleted items, but only when something actually went.
+    if (live.length !== favorites.length) {
+      await User.updateOne({ _id: req.user.id }, { $set: { favorites: live } });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Shortlist fetched successfully',
+      data: { favorites: items },
+    });
+  } catch (error) {
+    console.error('Error fetching shortlist:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Toggles one item and reports which way it went, so the button can settle on
+ * the server's answer rather than assuming its own optimistic flip was right.
+ */
+exports.toggleFavorite = async (req, res) => {
+  try {
+    const { itemType, itemId } = req.body;
+
+    if (!FAVORITE_TYPES.includes(itemType)) {
+      return res.status(400).json({
+        success: false,
+        message: `itemType must be one of: ${FAVORITE_TYPES.join(', ')}`,
+      });
+    }
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ success: false, message: 'A valid itemId is required' });
+    }
+
+    const user = await User.findById(req.user.id).select('favorites');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const index = (user.favorites || []).findIndex(
+      (f) => f.itemType === itemType && String(f.itemId) === String(itemId),
+    );
+
+    let favorited;
+    if (index === -1) {
+      // Cap the list so a script cannot grow one user document without bound.
+      if (user.favorites.length >= 200) {
+        return res.status(400).json({
+          success: false,
+          message: 'Your shortlist is full. Remove something before adding more.',
+        });
+      }
+      user.favorites.push({ itemType, itemId });
+      favorited = true;
+    } else {
+      user.favorites.splice(index, 1);
+      favorited = false;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: favorited ? 'Added to your shortlist' : 'Removed from your shortlist',
+      data: { favorited, count: user.favorites.length },
+    });
+  } catch (error) {
+    console.error('Error updating shortlist:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/** Just the ids, for painting hearts across a listing page in one request. */
+exports.getFavoriteIds = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('favorites').lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Shortlist ids fetched successfully',
+      data: {
+        ids: (user?.favorites || []).map((f) => `${f.itemType}:${f.itemId}`),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching shortlist ids:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 };

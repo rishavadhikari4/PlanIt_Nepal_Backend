@@ -61,7 +61,25 @@ const userSchema = new mongoose.Schema({
     },
     lockUntil: {
         type: Date
-    }
+    },
+    /* The shortlist behind the heart on every listing. Stored as a typed
+       reference rather than three arrays, so one query returns the lot and a
+       new bookable type costs nothing. */
+    favorites: [{
+        itemType: {
+            type: String,
+            enum: ['venue', 'studio', 'dish'],
+            required: true
+        },
+        itemId: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true
+        },
+        addedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }]
 }, { timestamps: true });
 
 /* email and number are declared unique on the fields themselves; `number` is
@@ -70,6 +88,8 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ role: 1 });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 userSchema.index({ refreshToken: 1 }, { sparse: true });
+/* "Is this one shortlisted?" runs on every listing card the user sees. */
+userSchema.index({ "favorites.itemId": 1, "favorites.itemType": 1 });
 
 const User = mongoose.model('User', userSchema);
 

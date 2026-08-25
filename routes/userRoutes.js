@@ -25,6 +25,12 @@ router.patch('/me/picture', authMiddleware, authorizeRoles('customer'), upload.s
 // Delete own account (specific route - must come before parameter routes)
 router.delete('/me', authMiddleware, authorizeRoles("customer"), accountDeleteValidation, userController.deleteOwnAccount);
 
+/* Shortlist. Sits above the /:userId routes because "favorites" would
+   otherwise be read as a user id. */
+router.get('/me/favorites', authMiddleware, authorizeRoles("customer"), userController.getFavorites);
+router.get('/me/favorites/ids', authMiddleware, authorizeRoles("customer"), userController.getFavoriteIds);
+router.post('/me/favorites/toggle', authMiddleware, authorizeRoles("customer"), userController.toggleFavorite);
+
 // Delete user account by ID (parameter route - must come after specific routes)
 router.delete('/:userId', authMiddleware, authorizeRoles('admin'), userController.deleteUserAccount);
 
