@@ -64,6 +64,13 @@ const userSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+/* email and number are declared unique on the fields themselves; `number` is
+   sparse so the accounts that never supply one (Google sign-ups) do not all
+   collide on null. These cover the lookups that happen on every auth request. */
+userSchema.index({ role: 1 });
+userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
+userSchema.index({ refreshToken: 1 }, { sparse: true });
+
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;

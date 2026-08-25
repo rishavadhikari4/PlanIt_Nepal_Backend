@@ -21,6 +21,11 @@ const reviewSchema = new mongoose.Schema({
     }
 }, {timestamps: true});
 
+/* The public list reads verified reviews newest-first; the admin list reads
+   both. One review per user is not enforced, so `user` is a plain index. */
+reviewSchema.index({ verified: 1, createdAt: -1 });
+reviewSchema.index({ user: 1 });
+
 const Review = mongoose.model('Review', reviewSchema);
 
 module.exports = Review;

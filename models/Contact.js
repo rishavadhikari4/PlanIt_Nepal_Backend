@@ -27,6 +27,10 @@ const contactSchema = new mongoose.Schema({
     }
 }, {timestamps: true});
 
+/* Enquiries are listed newest-first and filtered by subject. */
+contactSchema.index({ createdAt: -1 });
+contactSchema.index({ subject: 1 });
+
 const Contact = mongoose.model("Contact", contactSchema);
 
 module.exports = Contact;

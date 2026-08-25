@@ -75,6 +75,18 @@ const venueSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+/* Indexes follow the catalogue's real access patterns: the listing sorts by
+   createdAt, price, name or capacity and filters on a price range, and the
+   search box runs a text query across name, location and description. */
+venueSchema.index({ createdAt: -1 });
+venueSchema.index({ price: 1 });
+venueSchema.index({ name: 1 });
+venueSchema.index({ orderedCount: -1 });
+venueSchema.index(
+  { name: "text", location: "text", description: "text" },
+  { name: "venue_text", weights: { name: 10, location: 5, description: 1 } },
+);
+
 const Venue = mongoose.model("Venue", venueSchema);
 
 module.exports = Venue;

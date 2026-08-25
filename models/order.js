@@ -117,5 +117,16 @@ const orderSchema = new mongoose.Schema({
 });
 
 
+/* The hot paths:
+     userId + createdAt   a customer's own order list
+     status + createdAt   the admin list, filtered by status
+     items.itemId/type    the double-booking check, which runs on every
+                          attempt to add a dated item to an order
+   `paymentReference` is declared on the field itself, for gateway callbacks. */
+orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ "items.itemId": 1, "items.itemType": 1, "items.bookingStatus": 1 });
+
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;

@@ -1,15 +1,19 @@
+/* dotenv has to run before anything reads process.env. It used to be called
+   after PORT was read and after passportConfig was required, so both silently
+   saw undefined — PORT fell back to 5000 whatever .env said. */
+require("dotenv").config();
+
 const express = require("express");
-const dotenv = require("dotenv");
 const passport = require("passport");
 const cors = require("cors");
 const cookieParser = require('cookie-parser');
 
-const PORT = process.env.PORT || 5000;
 const connectDB = require('./config/dbConfig');
 require('./config/passportConfig');
-dotenv.config();
 
 const routes = require('./routes/index');
+
+const PORT = process.env.PORT || 5000;
 
 const app = express();
 

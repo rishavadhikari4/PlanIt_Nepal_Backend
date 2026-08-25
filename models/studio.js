@@ -76,6 +76,17 @@ const studioSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+/* As venues, plus `services`, which the listing filters with $in. */
+studioSchema.index({ createdAt: -1 });
+studioSchema.index({ price: 1 });
+studioSchema.index({ name: 1 });
+studioSchema.index({ services: 1 });
+studioSchema.index({ orderedCount: -1 });
+studioSchema.index(
+  { name: "text", location: "text", description: "text" },
+  { name: "studio_text", weights: { name: 10, location: 5, description: 1 } },
+);
+
 const Studio = mongoose.model("Studio", studioSchema);
 
 module.exports = Studio;
