@@ -183,6 +183,9 @@ orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ createdAt: -1 });
 orderSchema.index({ "items.itemId": 1, "items.itemType": 1, "items.bookingStatus": 1 });
+/* Availability search sweeps every live booking that overlaps a date window,
+   across the whole catalogue, so it needs the dates leading. */
+orderSchema.index({ "items.bookedFrom": 1, "items.bookedTill": 1, "items.itemType": 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 module.exports = Order;
