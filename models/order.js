@@ -42,6 +42,18 @@ const orderItemSchema = new mongoose.Schema({
         default: function() {
             return (this.itemType === 'venue' || this.itemType === 'studio') ? 'pending' : undefined;
         }
+    },
+    /* Why one line was cancelled while the rest of the order stands — a venue
+       can fall through without the studio going with it. */
+    statusNote: {
+        type: String,
+        trim: true,
+        maxlength: 300,
+        default: null
+    },
+    statusChangedAt: {
+        type: Date,
+        default: null
     }
 });
 
@@ -67,6 +79,42 @@ const orderSchema = new mongoose.Schema({
   guestCount: {
     type: Number,
     min: 1,
+    default: null
+  },
+  /* Set when the order is cancelled, so the reason survives the status. */
+  cancelledAt: {
+    type: Date,
+    default: null
+  },
+  cancelledBy: {
+    type: String,
+    enum: ['customer', 'admin', null],
+    default: null
+  },
+  cancellationReason: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    default: null
+  },
+  /* Money returned after a cancellation. `refundedAmount` never exceeds
+     paidAmount; the controller is the only thing that writes it. */
+  refundedAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  refundStatus: {
+    type: String,
+    enum: ['none', 'due', 'processing', 'refunded'],
+    default: 'none'
+  },
+  refundedAt: {
+    type: Date,
+    default: null
+  },
+  refundReference: {
+    type: String,
     default: null
   },
   paymentType: {

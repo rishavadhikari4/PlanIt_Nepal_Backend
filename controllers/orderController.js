@@ -741,3 +741,277 @@ exports.getOrderById = async (req, res) => {
         });
     }
 };
+
+/* ------------------------------------------------------------------ *
+ * Cancellation, refunds and per-item status
+ *
+ * `order.status` and `items.bookingStatus` both carried a 'cancelled' value
+ * from the start, and nothing could ever set them from the customer's side.
+ * A booking could be taken and paid for with no way back out.
+ * ------------------------------------------------------------------ */
+
+/* How much of a payment comes back, by how much notice we get. Stated here as
+   data rather than buried in a branch, because this is the company's policy
+   and it is the thing most likely to change. */
+const REFUND_TIERS = [
+  { minDaysBefore: 30, fraction: 1, label: 'Full refund — cancelled 30 days or more before the event' },
+  { minDaysBefore: 14, fraction: 0.5, label: 'Half refund — cancelled 14 to 29 days before' },
+  { minDaysBefore: 0, fraction: 0, label: 'No refund — cancelled within 14 days of the event' },
+];
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** The soonest date anything on this order is booked for, or null. */
+const earliestBooking = (order) => {
+  const dates = (order.items || [])
+    .filter((i) => i.bookedFrom && i.bookingStatus !== 'cancelled')
+    .map((i) => new Date(i.bookedFrom).getTime());
+  return dates.length ? new Date(Math.min(...dates)) : null;
+};
+
+/**
+ * What a cancellation would return, without cancelling anything. The checkout
+ * and the profile both show this before the customer commits, so nobody
+ * discovers the policy only after pressing the button.
+ */
+const quoteRefund = (order) => {
+  const paid = Number(order.paidAmount) || 0;
+  const eventDate = earliestBooking(order);
+
+  // Nothing dated means nothing to be late for.
+  const daysBefore = eventDate ? Math.floor((eventDate.getTime() - Date.now()) / DAY) : Infinity;
+  const tier = REFUND_TIERS.find((t) => daysBefore >= t.minDaysBefore) || REFUND_TIERS[REFUND_TIERS.length - 1];
+
+  const amount = Math.round(paid * tier.fraction);
+  return {
+    paidAmount: paid,
+    refundAmount: amount,
+    forfeitAmount: paid - amount,
+    fraction: tier.fraction,
+    policy: tier.label,
+    eventDate: eventDate ? eventDate.toISOString() : null,
+    daysBefore: Number.isFinite(daysBefore) ? daysBefore : null,
+  };
+};
+
+exports.quoteCancellation = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (req.user.role !== 'admin' && String(order.userId) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: 'This is not your order' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cancellation quote fetched successfully',
+      data: {
+        cancellable: !['cancelled', 'completed'].includes(order.status),
+        ...quoteRefund(order),
+      },
+    });
+  } catch (error) {
+    console.error('Error quoting cancellation:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Cancels a whole order. The customer can cancel their own; an admin can
+ * cancel anyone's. The money is *marked* for refund rather than pushed back
+ * through the gateway — neither Khalti nor Fonepay refunds over their public
+ * API, so this records what is owed and the admin settles it and marks it
+ * done. Recording it is the part that was missing.
+ */
+exports.cancelOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const reason = String(req.body.reason || '').trim().slice(0, 500);
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const isAdmin = req.user.role === 'admin';
+    if (!isAdmin && String(order.userId) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: 'This is not your order' });
+    }
+
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'This order is already cancelled' });
+    }
+    if (order.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'This event has already happened. Contact us if something went wrong.',
+      });
+    }
+    if (!isAdmin && !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tell us briefly why you are cancelling.',
+      });
+    }
+
+    const quote = quoteRefund(order);
+
+    order.status = 'cancelled';
+    order.cancelledAt = new Date();
+    order.cancelledBy = isAdmin ? 'admin' : 'customer';
+    order.cancellationReason = reason || null;
+    order.items.forEach((item) => {
+      if (item.bookingStatus && item.bookingStatus !== 'cancelled') {
+        item.bookingStatus = 'cancelled';
+        item.statusChangedAt = new Date();
+      }
+    });
+
+    if (quote.refundAmount > 0) {
+      order.refundStatus = 'due';
+      order.refundedAmount = 0;
+    }
+
+    await order.save();
+
+    /* The dates are free again, so give the popularity counters back what the
+       order took. Failing here must not fail the cancellation. */
+    try {
+      const venueIds = order.items.filter((i) => i.itemType === 'venue').map((i) => i.itemId);
+      const studioIds = order.items.filter((i) => i.itemType === 'studio').map((i) => i.itemId);
+      if (venueIds.length) await Venue.updateMany({ _id: { $in: venueIds } }, { $inc: { orderedCount: -1 } });
+      if (studioIds.length) await Studio.updateMany({ _id: { $in: studioIds } }, { $inc: { orderedCount: -1 } });
+      for (const dish of order.items.filter((i) => i.itemType === 'dish')) {
+        await Cuisine.updateOne(
+          { 'dishes._id': dish.itemId },
+          { $inc: { 'dishes.$.orderedCount': -dish.quantity } },
+        );
+      }
+    } catch (countError) {
+      console.error('Could not roll back order counts:', countError.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        quote.refundAmount > 0
+          ? `Order cancelled. Rs ${quote.refundAmount.toLocaleString('en-IN')} will be returned to you within five working days.`
+          : 'Order cancelled.',
+      data: { order, refund: quote },
+    });
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Admin records that a refund has actually been paid out. Separate from
+ * cancelling, because the money leaves by bank transfer on a different day
+ * from the decision.
+ */
+exports.settleRefund = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    if (order.refundStatus === 'none') {
+      return res.status(400).json({ success: false, message: 'No refund is due on this order' });
+    }
+    if (order.refundStatus === 'refunded') {
+      return res.status(400).json({ success: false, message: 'This refund is already settled' });
+    }
+
+    const requested = Number(req.body.amount);
+    const quoted = quoteRefund(order).refundAmount;
+    const amount = Number.isFinite(requested) && requested >= 0 ? Math.round(requested) : quoted;
+
+    // A refund can never exceed what was actually taken.
+    if (amount > (order.paidAmount || 0)) {
+      return res.status(400).json({
+        success: false,
+        message: `A refund cannot exceed the Rs ${(order.paidAmount || 0).toLocaleString('en-IN')} paid.`,
+      });
+    }
+
+    order.refundedAmount = amount;
+    order.refundStatus = 'refunded';
+    order.refundedAt = new Date();
+    order.refundReference = String(req.body.reference || '').trim().slice(0, 120) || null;
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Refund recorded',
+      data: { order },
+    });
+  } catch (error) {
+    console.error('Error settling refund:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Moves one line of an order. A venue can fall through without taking the
+ * studio with it, which the single order-wide status could never express.
+ */
+exports.updateItemStatus = async (req, res) => {
+  try {
+    const { orderId, itemId } = req.params;
+    const { bookingStatus } = req.body;
+
+    if (!['pending', 'confirmed', 'cancelled'].includes(bookingStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "bookingStatus must be 'pending', 'confirmed' or 'cancelled'",
+      });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const item = order.items.id(itemId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'That line is not on this order' });
+    }
+    if (item.itemType === 'dish') {
+      return res.status(400).json({
+        success: false,
+        message: 'Dishes are not booked against a date and carry no booking status.',
+      });
+    }
+
+    item.bookingStatus = bookingStatus;
+    item.statusNote = String(req.body.note || '').trim().slice(0, 300) || null;
+    item.statusChangedAt = new Date();
+
+    /* When every dated line is cancelled the order is cancelled too — leaving
+       it "confirmed" with nothing confirmed on it is how a status stops
+       meaning anything. */
+    const dated = order.items.filter((i) => i.itemType !== 'dish');
+    if (dated.length && dated.every((i) => i.bookingStatus === 'cancelled') && order.status !== 'cancelled') {
+      order.status = 'cancelled';
+      order.cancelledAt = new Date();
+      order.cancelledBy = 'admin';
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Marked ${item.name} as ${bookingStatus}`,
+      data: { order },
+    });
+  } catch (error) {
+    console.error('Error updating item status:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports.REFUND_TIERS = REFUND_TIERS;
+module.exports.quoteRefund = quoteRefund;
