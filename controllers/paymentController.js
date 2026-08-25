@@ -387,6 +387,171 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
+/* ------------------------------------------------------------------ *
+ * Webhooks and reconciliation
+ *
+ * Until now a payment was only ever confirmed when the customer landed back
+ * on the callback page. Close the tab at the wrong moment and the money had
+ * moved while the order sat in `draft` for ever — the one failure in this
+ * system that loses real money.
+ *
+ * Two independent safety nets, because in Nepal you cannot count on either
+ * alone: the gateway pushes to us, and we sweep for anything it missed.
+ *
+ * Neither trusts the request body. Khalti is re-checked through its lookup
+ * API with our own secret key; Fonepay's response is checked against its
+ * HMAC. The payload only ever tells us *which* order to go and verify.
+ * ------------------------------------------------------------------ */
+
+/** Finds the order an inbound gateway message refers to. */
+const orderByReference = async (reference) => {
+  if (!reference) return null;
+  return Order.findOne({ paymentReference: String(reference) }).populate('userId', 'name email');
+};
+
+/**
+ * Verifies and settles, wherever the trigger came from. Returns a plain
+ * result rather than writing a response, so the callback, the webhook and the
+ * sweeper all share exactly one set of money rules.
+ */
+const settleFromGateway = async (order, provider, query) => {
+  if (order.paymentStatus === 'completed' || order.paymentStatus === 'partial') {
+    return { settled: true, alreadySettled: true, order };
+  }
+
+  const result =
+    provider === 'khalti'
+      ? await verifyKhalti(order, query)
+      : provider === 'fonepay'
+        ? await verifyFonepay(order, query)
+        : { settled: false, status: 'unknown_provider', message: `Unknown payment method: ${provider}` };
+
+  if (!result.settled) return { ...result, order };
+
+  await settleOrder(order, {
+    provider,
+    amountPaid: result.amountPaid,
+    transactionId: result.transactionId,
+  });
+  return { settled: true, order };
+};
+
+/**
+ * POST /api/payments/webhook/khalti   (called by Khalti, not by a browser)
+ *
+ * Always answers 200. A gateway that receives an error retries, and retrying
+ * will not fix a payment we have decided is bad — the log is where a genuine
+ * problem needs to surface, not the response code.
+ */
+exports.khaltiWebhook = async (req, res) => {
+  try {
+    const pidx = req.body?.pidx || req.body?.data?.pidx || req.query?.pidx;
+    if (!pidx) {
+      console.warn('Khalti webhook arrived with no pidx');
+      return res.status(200).json({ received: true });
+    }
+
+    const order = await orderByReference(pidx);
+    if (!order) {
+      console.warn(`Khalti webhook for unknown reference ${pidx}`);
+      return res.status(200).json({ received: true });
+    }
+
+    const result = await settleFromGateway(order, 'khalti', { pidx });
+    console.log(
+      `Khalti webhook ${pidx}: ${result.alreadySettled ? 'already settled' : result.settled ? 'settled' : `not settled (${result.status})`}`,
+    );
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Khalti webhook failed:', error.message);
+    return res.status(200).json({ received: true });
+  }
+};
+
+/** POST/GET /api/payments/webhook/fonepay */
+exports.fonepayWebhook = async (req, res) => {
+  try {
+    const payload = { ...req.query, ...req.body };
+    const order = await orderByReference(payload.PRN);
+    if (!order) {
+      console.warn(`Fonepay webhook for unknown reference ${payload.PRN}`);
+      return res.status(200).json({ received: true });
+    }
+
+    const result = await settleFromGateway(order, 'fonepay', payload);
+    console.log(
+      `Fonepay webhook ${payload.PRN}: ${result.alreadySettled ? 'already settled' : result.settled ? 'settled' : `not settled (${result.status})`}`,
+    );
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Fonepay webhook failed:', error.message);
+    return res.status(200).json({ received: true });
+  }
+};
+
+/**
+ * Sweeps orders that were sent to a gateway and never came back.
+ *
+ * Only Khalti can be swept: its lookup API answers for any pidx we hold.
+ * Fonepay only ever reports on the redirect it signs, so an abandoned
+ * Fonepay attempt is listed for a human rather than resolved automatically.
+ *
+ * `minAgeMinutes` keeps the sweep off payments the customer may still be in
+ * the middle of completing.
+ */
+const reconcilePending = async ({ minAgeMinutes = 10, maxAgeHours = 72, limit = 50 } = {}) => {
+  const now = Date.now();
+  const orders = await Order.find({
+    paymentStatus: 'pending',
+    paymentReference: { $ne: null },
+    paymentProvider: { $in: ['khalti', 'fonepay'] },
+    createdAt: {
+      $lte: new Date(now - minAgeMinutes * 60 * 1000),
+      $gte: new Date(now - maxAgeHours * 60 * 60 * 1000),
+    },
+  })
+    .limit(limit)
+    .populate('userId', 'name email');
+
+  const settled = [];
+  const unresolved = [];
+
+  for (const order of orders) {
+    if (order.paymentProvider !== 'khalti') {
+      unresolved.push({ orderId: order._id, provider: order.paymentProvider, reason: 'needs manual check' });
+      continue;
+    }
+    try {
+      const result = await settleFromGateway(order, 'khalti', { pidx: order.paymentReference });
+      if (result.settled) settled.push({ orderId: order._id, amount: order.paidAmount });
+      else unresolved.push({ orderId: order._id, provider: 'khalti', reason: result.status });
+    } catch (error) {
+      unresolved.push({ orderId: order._id, provider: 'khalti', reason: error.message });
+    }
+  }
+
+  return { checked: orders.length, settled, unresolved };
+};
+
+exports.reconcilePending = reconcilePending;
+
+/** GET /api/payments/reconcile — admin, runs the sweep now and reports. */
+exports.runReconciliation = async (req, res) => {
+  try {
+    const report = await reconcilePending({
+      minAgeMinutes: Number(req.query.minAgeMinutes) || 10,
+    });
+    return res.status(200).json({
+      success: true,
+      message: `Checked ${report.checked} pending payment(s); settled ${report.settled.length}.`,
+      data: report,
+    });
+  } catch (error) {
+    console.error('Reconciliation failed:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 /**
  * GET /api/payments/status/:orderId
  * Lets the client re-read where an order stands without starting anything.
