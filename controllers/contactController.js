@@ -117,3 +117,103 @@ exports.deleteContactForm = async (req, res) => {
 
 
 
+
+/* ------------------------------------------------------------------ *
+ * Working an enquiry
+ *
+ * Reading and deleting was the whole of it before, so an enquiry either got
+ * answered out of band or not at all, and nobody could tell which.
+ * ------------------------------------------------------------------ */
+
+const { sendEnquiryReplyEmail } = require('../utils/emailHelper');
+
+const STATUSES = ['new', 'in_progress', 'answered', 'closed'];
+
+/** Moves an enquiry through the queue. */
+exports.updateContactStatus = async (req, res) => {
+  try {
+    const { status, internalNote } = req.body;
+
+    if (status !== undefined && !STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `status must be one of: ${STATUSES.join(', ')}`,
+      });
+    }
+
+    const update = {};
+    if (status !== undefined) update.status = status;
+    if (internalNote !== undefined) update.internalNote = String(internalNote).trim().slice(0, 2000) || null;
+
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ success: false, message: 'Nothing to update' });
+    }
+
+    const contact = await Contact.findByIdAndUpdate(req.params.contactId, update, { new: true });
+    if (!contact) {
+      return res.status(404).json({ success: false, message: 'Enquiry not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Enquiry updated',
+      data: { contact },
+    });
+  } catch (error) {
+    console.error('Error updating enquiry:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Replies to an enquiry by email and records what was said.
+ *
+ * The reply is stored whether or not the mail goes out — a send that fails
+ * must not lose the text someone just wrote, and `emailed: false` tells the
+ * next person to follow up by hand.
+ */
+exports.replyToContact = async (req, res) => {
+  try {
+    const body = String(req.body.body || '').trim();
+    if (body.length < 2) {
+      return res.status(400).json({ success: false, message: 'Write a reply before sending it.' });
+    }
+    if (body.length > 4000) {
+      return res.status(400).json({ success: false, message: 'Replies are limited to 4000 characters.' });
+    }
+
+    const contact = await Contact.findById(req.params.contactId);
+    if (!contact) {
+      return res.status(404).json({ success: false, message: 'Enquiry not found' });
+    }
+
+    let emailed = false;
+    let warning = null;
+    try {
+      await sendEnquiryReplyEmail(contact, body, req.user?.name);
+      emailed = true;
+    } catch (mailError) {
+      console.error('Enquiry reply email failed:', mailError.message);
+      warning = 'The reply was saved but the email did not send. Follow up by phone.';
+    }
+
+    contact.replies.push({
+      body,
+      sentBy: req.user?.id,
+      sentByName: req.user?.name || 'Staff',
+      emailed,
+    });
+    contact.status = 'answered';
+    await contact.save();
+
+    return res.status(200).json({
+      success: true,
+      message: emailed ? `Reply sent to ${contact.email}` : 'Reply saved',
+      warning,
+      data: { contact },
+    });
+  } catch (error) {
+    console.error('Error replying to enquiry:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
